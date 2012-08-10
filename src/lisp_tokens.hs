@@ -2,57 +2,6 @@ import Data.List -- partition
 import Control.Monad.Error -- for Monad instance of Either
 
 
--- -----------------------------------------------------------------
--- Tokens
-
-data Token 
-  = OpenParen
-  | CloseParen
-  | OpenSquare
-  | CloseSquare
-  | Whitespace String
-  | Comment String
-  | Integer Integer -- wow, that looks weird ... is the first one a constructor and the second one a type ???
-  | Decimal (Integer, Integer)
-  | String String -- again, weird
-  | Symbol String
-  deriving (Show)
-  
-  
-mySplit :: (a -> Bool) -> [a] -> ([a], [a])
-mySplit _ [] = ([], [])
-mySplit f (x:xs)
-  | f x = let (l, r) = mySplit f xs
-          in (x:l, r)
-  | otherwise = ([], x:xs)
-
-
-nextToken :: String -> Either String (Token, String)
-nextToken [] = Left "empty input"
-nextToken ('(':rest) = Right (OpenParen, rest)
-nextToken (')':rest) = Right (CloseParen, rest)
-nextToken ('[':rest) = Right (OpenSquare, rest)
-nextToken (']':rest) = Right (CloseSquare, rest)
-nextToken str@(x:xs)
-  | elem x ['0' .. '9'] = Right (Integer $ read ix, r1)
-  | elem x " \t\r\f\n" = Right (Whitespace ws, r2)
-  | x == ';' = Right (Comment c, r3)
-  | x == '"' = Right (String s, tail r4)
-  | elem x (['a' .. 'z'] ++ ['A' .. 'Z']) = Right (Symbol name, r5)
-  | otherwise = Left $ "unable to match token from " ++ str
-    where
-      (ix, r1) = mySplit (flip elem ['0' .. '9']) str
-      (ws, r2) = mySplit (flip elem " \t\r\f\n") str
-      (c, r3) = mySplit (/= '\n') str
-      (s, r4) = mySplit (/= '"') $ tail str
-      (name, r5) = mySplit (flip elem (['a' .. 'z'] ++ ['A' .. 'Z'])) str
-  
-  
-scanner :: String -> Either String ([Token], String)
-scanner [] = Right ([], [])
-scanner str = nextToken str >>= (\(t1, r1) -> 
-      scanner r1 >>= (\(t2, r2) -> 
-      return (t1 : t2, r2)))
           
       
 -- ------------------------------------------------------------------------------
@@ -108,16 +57,169 @@ alt l r inp = tryLeft (l inp)
 
 -- match 0 or more of the parser
 many :: Parser a b -> Parser a [b]
-many p = alt (\inp -> p inp >>= (\(rest1, r1) -> 
-  many p rest1 >>= (\(rest2, r2) ->
-  return (rest2, r1 : r2))))
-  (succeed [])
-  -- `alt`
+many p = (using cons parser) `alt` (succeed [])
+  where cons = uncurry (:)
+        parser = pseq p $ many p
+        
+        
+-- match 1 or more of the parser
+some :: Parser a b -> Parser a [b]
+some p = using cons $ pseq p $ many p
+  where cons = uncurry (:)
+  
+  
+-- match any of the parsers
+pany :: [Parser a b] -> Parser a b
+pany = foldr alt (pfail "'pany' found no matching alternative")
 
-{-
-many p inp = (do
-  (rest1, r1) <- p inp
-  (rest2, r2) <- many p rest1
-  return (rest2, r1 : r2)) -- (succeed [])
--}    
+
+-- throw away result of parser
+preturn :: c -> Parser a b -> Parser a c
+preturn v p = using (const v) p
+  
+  
+-- matches all of the parsers in sequence
+pall :: [Parser a b] -> Parser a [b]
+pall = foldr (\p b -> using cons (pseq p b)) (succeed [])
+  where cons = uncurry (:)
+  
+  
+-- matches end of input
+end :: Parser a ()
+end [] = succeed () []
+end ip = pfail "not end of input" ip
+
+
+-- ------------------------------
+-- other interesting combinators 
+
+-- always succeeds
+separatedBy0 :: Parser a b -> Parser a c -> Parser a ([b], [c])
+separatedBy0 p s = (using func $ p `pseq` rest) `alt` base
+  where
+    func (f, (ss, ps)) = (f:ps, ss)
+    rest = using unzip $ many $ pseq s p
+    base = succeed ([], [])
     
+    
+checkParser :: (b -> Bool) -> Parser a b -> Parser a b
+checkParser f p inp = p inp >>= (\(rest, result) ->
+  if f result then return (rest, result) else pfail "parser check failed" [])
+
+
+separatedBy1 :: Parser a b -> Parser a c -> Parser a ([b], [c])
+separatedBy1 p s = checkParser ((> 0) . length . fst) $ separatedBy0 p s
+
+-- ---------------------------------------------------
+-- experiments
+
+
+-- matches 0 or 1 of the parser
+--   this appears to be really dumb:
+--   the whole returning v thing if
+--   it fails -- how are you supposed
+--   to distinguish that from a real
+--   return value?
+optional :: Parser a b -> b -> Parser a b
+optional p v = p `alt` (succeed v)
+
+
+-- succeed but consume no input if parser succeeds
+--   this is a very weird combinator that
+--   I don't feel comfortable with it
+lookahead :: Parser a b -> Parser a ()
+lookahead p inp = tryIt $ p inp
+  where tryIt (Right _) = succeed () inp
+        tryIt (Left _) = pfail "'lookahead' failed" inp
+
+
+-- doesn't match a parser, consumes no input
+pnpnot :: Parser a b -> Parser a ()
+pnpnot p inp = tryIt $ p inp
+  where tryIt (Left _) = succeed () inp
+        tryIt _ = pfail "'pnpnot' planned failure" inp
+        
+        
+-- doesn't match any parser, consumes no input
+pnpnone :: [Parser a b] -> Parser a ()
+pnpnone = preturn () . pall . map pnpnot
+
+
+-- ---------------------------------------------------
+-- parsing fun
+
+digits :: [Parser Char Char]
+digits = map literal ['0'..'9']
+
+digit :: Parser Char Char
+digit = pany digits
+
+integer :: Parser Char Integer
+integer = using read $ some digit
+
+alpha :: Parser Char Char
+alpha = pany $ map literal (['a' .. 'z'] ++ ['A' .. 'Z'])
+
+wschar :: Parser Char Char
+wschar = pany $ map literal " \t\n\r\f"
+
+-- matches all of the tokens in sequence
+string :: (Eq a) => [a] -> Parser a [a]
+string = pall . map literal
+
+
+-- matches if next token is not x
+pnot :: (Eq a) => a -> Parser a a
+pnot x = satisfy (/= x)
+
+
+-- matches if next token is not in xs
+--   not sure if I like this one
+pnone :: (Eq a) => [a] -> Parser a a
+pnone xs = satisfy (\x -> not $ elem x xs)
+
+
+  
+-- -----------------------------------------------------------------
+-- Tokens
+
+
+data Token 
+  = OpenParen
+  | CloseParen
+  | OpenSquare
+  | CloseSquare
+  | Whitespace String
+  | Comment String
+  | Integer Integer -- wow, that looks weird ... is the first one a constructor and the second one a type ???
+  | Decimal (Integer, Integer)
+  | String String -- again, weird
+  | Symbol String
+  deriving (Show)
+  
+  
+myReader :: String -> Integer
+myReader [] = 0
+myReader xs = read xs
+
+
+nextToken :: Parser Char Token
+nextToken = pany [op, cp, os, cs, ws, flt, int, str, com, sym]
+  where
+    op = preturn OpenParen $ literal '('
+    cp = preturn CloseParen $ literal ')'
+    os = preturn OpenSquare $ literal '['
+    cs = preturn CloseSquare $ literal ']'
+    ws = using Whitespace $ some wschar
+    flt = using (\[x,y,z] -> Decimal (myReader x, myReader z)) $ alt (pall [some digit, dot, many digit]) (pall [many digit, dot, some digit])
+    int = using Integer integer
+    str = using (String . concat) $ pall [preturn [] $ literal '"', many $ pnot '"', preturn [] $ literal '"']
+    com = using (Comment . concat) $ pall [preturn [] $ literal ';', many $ pnot '\n']
+    sym = using Symbol $ some alpha
+    dot = preturn [] $ literal '.'
+
+  
+  
+scanner :: Parser Char [Token]
+scanner = many nextToken
+
