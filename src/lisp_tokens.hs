@@ -1,5 +1,5 @@
-import Data.List -- partition
 import Control.Monad.Error -- for Monad instance of Either
+import qualified Data.Map as Map -- for eval
 
 
           
@@ -93,22 +93,22 @@ end ip = pfail "not end of input" ip
 -- ------------------------------
 -- other interesting combinators 
 
+    
+separatedByOne :: Parser a b -> Parser a c -> Parser a ([b], [c])
+separatedByOne p s = using f $ pseq p (using unzip $ many $ pseq s p)
+  where f (fp, (oss, ops)) = (fp:ops, oss)
+  
+
 -- always succeeds
 separatedBy0 :: Parser a b -> Parser a c -> Parser a ([b], [c])
-separatedBy0 p s = (using func $ p `pseq` rest) `alt` base
-  where
-    func (f, (ss, ps)) = (f:ps, ss)
-    rest = using unzip $ many $ pseq s p
-    base = succeed ([], [])
-    
-    
-checkParser :: (b -> Bool) -> Parser a b -> Parser a b
-checkParser f p inp = p inp >>= (\(rest, result) ->
-  if f result then return (rest, result) else pfail "parser check failed" [])
+separatedBy0 p s = (separatedByOne p s) `alt` succeed ([], [])
 
 
-separatedBy1 :: Parser a b -> Parser a c -> Parser a ([b], [c])
-separatedBy1 p s = checkParser ((> 0) . length . fst) $ separatedBy0 p s
+-- changes error message if parser fails
+message :: Failure -> Parser a b -> Parser a b
+message m p inp = try $ p inp
+  where try (Left _) = Left m
+        try x = x
 
 -- ---------------------------------------------------
 -- experiments
@@ -143,6 +143,18 @@ pnpnot p inp = tryIt $ p inp
 -- doesn't match any parser, consumes no input
 pnpnone :: [Parser a b] -> Parser a ()
 pnpnone = preturn () . pall . map pnpnot
+
+
+
+    
+    
+checkParser :: (b -> Bool) -> Parser a b -> Parser a b
+checkParser f p inp = p inp >>= (\(rest, result) ->
+  if f result then return (rest, result) else pfail "parser check failed" [])
+
+
+separatedBy1 :: Parser a b -> Parser a c -> Parser a ([b], [c])
+separatedBy1 p s = checkParser ((> 0) . length . fst) $ separatedBy0 p s
 
 
 -- ---------------------------------------------------
@@ -192,10 +204,10 @@ data Token
   | Whitespace String
   | Comment String
   | Integer Integer -- wow, that looks weird ... is the first one a constructor and the second one a type ???
-  | Decimal (Integer, Integer)
+  | Decimal Float
   | String String -- again, weird
   | Symbol String
-  deriving (Show)
+  deriving (Show, Eq)
   
   
 myReader :: String -> Integer
@@ -211,15 +223,130 @@ nextToken = pany [op, cp, os, cs, ws, flt, int, str, com, sym]
     os = preturn OpenSquare $ literal '['
     cs = preturn CloseSquare $ literal ']'
     ws = using Whitespace $ some wschar
-    flt = using (\[x,y,z] -> Decimal (myReader x, myReader z)) $ alt (pall [some digit, dot, many digit]) (pall [many digit, dot, some digit])
+    flt = using (Decimal . read . concat) $ alt (pall [some digit, dot, many digit]) (pall [many digit, dot, some digit])
     int = using Integer integer
     str = using (String . concat) $ pall [preturn [] $ literal '"', many $ pnot '"', preturn [] $ literal '"']
     com = using (Comment . concat) $ pall [preturn [] $ literal ';', many $ pnot '\n']
     sym = using Symbol $ some alpha
-    dot = preturn [] $ literal '.'
+    dot = using (:[]) $ literal '.'
 
   
   
 scanner :: Parser Char [Token]
 scanner = many nextToken
+
+
+-- ------------------------------------------------------------------
+-- AST construction
+
+data ASTNode 
+  = Application ASTNode [ASTNode]
+  | AList [ASTNode]
+  | ASymbol String
+  | ANumber Float
+  | AChar Char
+  deriving (Show)
+
+astring :: Parser Token ASTNode
+astring (String s:rest) = succeed (AList $ map AChar s) rest
+astring r = pfail "unable to match 'AString'" r
+
+anumber :: Parser Token ASTNode
+anumber (Integer i:rest) = succeed (ANumber $ fromIntegral i) rest
+anumber (Decimal f:rest) = succeed (ANumber f) rest
+anumber r = pfail "unable to match 'ANumber'" r
+
+asymbol :: Parser Token ASTNode
+asymbol (Symbol s:rest) = succeed (ASymbol s) rest
+asymbol r = pfail "unable to match 'ASymbol'" r
+
+aws :: Parser Token ()
+aws (Whitespace w:rest) = succeed () rest
+aws r = pfail "unable to match whitespace" r
+
+alist :: Parser Token ASTNode
+alist = using (AList . concat) $ pall [os, forms, cs]
+  where os = preturn [] $ literal OpenSquare
+        forms = many form
+        cs = preturn [] $ literal CloseSquare
+        
+app :: Parser Token ASTNode
+app = using (\(_, (f, (rs, _))) -> Application f rs) $ pseq op $ pseq (alt app asymbol) $ pseq (many form) cp
+  where op = literal OpenParen
+        cp = literal CloseParen
+        
+form :: Parser Token ASTNode
+form = pany [astring, anumber, asymbol, alist, app]
+
+beagle :: Parser Token [ASTNode]
+beagle = some form
+
+
+unwrap :: (Monad m) => m (b, c) -> m c
+unwrap x = x >>= (return . snd)
+
+-- :: Monad m => (b, c) -> m c
+
+-- full :: String -> Either String [ASTNode]
+full str = scanner str >>= (beagle . filter shit . snd) >>= (return . snd) -- (\x -> Right $ snd x)
+  where shit (Whitespace _) = False
+        shit _ = True
+        
+
+-- --------------------------------------------------------
+-- the evaluator
+
+type Environment = Map.Map String LispVal
+
+data LispVal
+  = LNumber Float
+  | LList [LispVal]
+  | LChar Char
+  | LBoolean Bool
+  | LFunc ([LispVal] -> LispVal)
+  | LSpecial (Environment -> [ASTNode] -> LispVal)
+  
+  
+instance Show LispVal where
+  show (LNumber f) = show f
+  show (LList fs) = show $ map show fs
+  show (LChar c) = show c
+  show (LFunc f) = "function"
+  show (LBoolean b) = show b
+  
+  
+apply :: Environment -> LispVal -> [LispVal] -> Either String (Environment, LispVal)
+apply e (LFunc f) args = Right (e, f args)
+apply e (LSpecial s) forms = Left "special form evaluation is unimplemented"
+apply _ _ _ = Left "hey, you didn't give me a function or special form!"
+
+
+evalForm :: Either String (Environment, [LispVal]) -> ASTNode -> Either String (Environment, [LispVal])
+evalForm base nextForm = base >>= (\(env, evaledForms) -> 
+  eval env nextForm >>= (\(nextEnv, evaledForm) -> 
+  return (nextEnv, evaledForm : evaledForms)))
+  
+  
+eval :: Environment -> ASTNode -> Either String (Environment, LispVal)
+eval e (ANumber f) = Right (e, LNumber f)
+eval e (AChar c) = Right (e, LChar c)
+eval e (ASymbol s) = (fromMaybe $ Map.lookup s e) >>= (\v -> return (e, v))
+  where fromMaybe Nothing = Left ("unbound variable: " ++ s)
+        fromMaybe (Just x) = Right x
+eval e (AList fs) = foldl evalForm (Right (e, [])) fs >>= 
+  (\(newEnv, newForms) -> Right (newEnv, LList $ reverse newForms))
+eval e (Application op args) = eval e op >>=
+  (\(e1, f) -> foldl evalForm (Right (e1, [])) args >>=
+  (\(newEnv, newForms) -> apply newEnv f $ reverse newForms))
+  
+  
+defaultEnv = Map.fromList [("true", LBoolean True), ("false", LBoolean False)]
+
+
+      
+evaluator :: String -> Either String [LispVal]
+evaluator str = full str >>= 
+  mapM (eval defaultEnv) >>= 
+  (return . (Prelude.map snd))
+  
 
