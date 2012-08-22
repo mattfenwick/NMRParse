@@ -1,7 +1,7 @@
 import System.IO
+import ShiftX
 
-do {
+parse1 = do
   h <- openFile "shiftx.txt" ReadMode
   x <- hGetContents h
-  putStrLn $ show $ shiftx x
-}
+  return $ shiftx x
