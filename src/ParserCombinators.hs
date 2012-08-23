@@ -11,6 +11,7 @@ module ParserCombinators (
     , pany
     , pall
     , some
+    , pnone
     , pnot
 
     , Parser
@@ -21,12 +22,17 @@ module ParserCombinators (
     , wschar
     
     -- hmmmm
+    , pseq2
     , pseq3
     , string
     , separatedBy0
     , separatedBy1
     , ignoreLeft
     , ignoreRight
+    , pnpnot
+    , pnpnone
+    , getOne
+    , message
     
 ) where
 
@@ -58,6 +64,12 @@ satisfy _ [] = pfail "empty input to 'satisfy'" []
 satisfy p (x:xs)
   | p x = succeed x xs
   | otherwise = pfail "'satisfy' predicate false" (x:xs)
+  
+  
+-- succeeds, consuming one 'token', as
+--   long as input is not empty
+getOne :: Parser a a
+getOne = satisfy (const True)
 
 
 -- match a token exactly
@@ -67,15 +79,21 @@ literal tok = satisfy (== tok)
 
 -- match a parser and do something with its result
 using :: (b -> c) -> Parser a b -> Parser a c
-using f p inp = p inp >>= (\(rest, r) ->
-  return (rest, f r))
+using f p inp = p inp >>= 
+  \(rest, r) -> return (rest, f r)
+  
+  
+usingFail :: (b -> Either Failure c) -> Parser a b -> Parser a c
+usingFail f p inp = p inp >>= 
+  \(rest, r) -> f r >>=
+  \c -> return (rest, c)
 
 
 -- match both parsers in sequence
 pseq :: Parser a b -> Parser a c -> Parser a (b, c)
-pseq l r inp = l inp >>= (\(toks1, res1) ->
-  r toks1 >>= (\(toks2, res2) ->
-  return (toks2, (res1, res2))))
+pseq l r inp = l inp >>= 
+  \(toks1, res1) -> r toks1 >>= 
+  \(toks2, res2) -> return (toks2, (res1, res2))
   
 
 pseq2 :: (b -> c -> d) -> Parser a b -> Parser a c -> Parser a d
@@ -157,9 +175,8 @@ separatedBy0 p s = (separatedByOne p s) `alt` succeed ([], [])
 
 -- changes error message if parser fails
 message :: Failure -> Parser a b -> Parser a b
-message m p inp = try $ p inp
-  where try (Left _) = Left m
-        try x = x
+message m p = alt p (pfail m)
+
 
 -- ---------------------------------------------------
 -- experiments

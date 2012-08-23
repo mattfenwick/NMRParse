@@ -70,12 +70,11 @@ dashes = munch $ separatedBy0 (some (literal '-')) ws
 
 
 sxline :: Parser Char Line
-sxline = using f $ pseq (munch integer) $ pseq (munch capLetter) (munch $ blow float ws)
-  where f (i, (l, fs)) = Line i l fs
+sxline = pseq3 Line (munch integer) (munch capLetter) (munch $ blow float ws)
 
 
 shiftx :: Parser Char ShiftX
-shiftx = using f $ pseq (ignoreRight sxhead newline) $ pseq (ignoreRight dashes newline) $ blow sxline newline
-  where f (h, (d, ls)) = ShiftX h ls
+shiftx = pseq2 ShiftX (ignoreRight sxhead newline) body
+  where body = ignoreLeft (ignoreRight dashes newline) (blow sxline newline)
 
 
