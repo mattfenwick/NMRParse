@@ -2,10 +2,14 @@ module JavaTokens (
     
     Keyword(..)
   , keywordNames
+  , nameToKeyword
     
   , Literal(..)
   
   , Separator(..)
+  , stringToSeparator
+  
+  , Operator(..)
   
   , Token(..)
   
@@ -134,7 +138,7 @@ data Token
 
 
 data InputElement
-  = WhiteSpace String
+  = Whitespace String
   | Comment String
   | Token Token
   deriving (Show, Eq)

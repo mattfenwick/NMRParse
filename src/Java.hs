@@ -19,16 +19,16 @@ lineTerminator :: Parser Char String
 lineTerminator = pany $ map string ["\r\f", "\r", "\f", "\n"]  -- whoa! \n wasn't in the spec!
 
 
-booleanLiteral :: Parser Char String
-booleanLiteral = alt (string "true") (string "false")
+booleanLiteral :: Parser Char Bool
+booleanLiteral = alt (preturn True $ string "true") (preturn False $ string "false")
 
 
 nullLiteral :: Parser Char String
 nullLiteral = string "null"
 
 
-keyword :: Parser Char String
-keyword = pany $ map string keywordNames
+keyword :: Parser Char Keyword
+keyword = usingFail nameToKeyword $ pany $ map string keywordNames
 
 
 javaLetter :: Parser Char Char
@@ -88,8 +88,8 @@ stringLiteral = ignoreLeft dq $ ignoreRight (many stringCharacter) dq
   where dq = literal '"'
 
 
-separator :: Parser Char Char
-separator = pany $ map literal "(){}[];,."
+separator :: Parser Char Separator
+separator = usingFail stringToSeparator $ pany $ map literal "(){}[];,."
 
 
 operator :: Parser Char String
@@ -119,8 +119,8 @@ exponentPart :: Parser Char String
 exponentPart = using (uncurry (:)) $ pseq exponentIndicator signedInteger
 
 
-decimalFloatingPointLiteral :: Parser Char String
-decimalFloatingPointLiteral = using concat $ pany [f1, f2, f3, f4]
+decimalFloatingPointLiteral :: Parser Char Double
+decimalFloatingPointLiteral = using (read . concat) $ pany [f1, f2, f3, f4]
   where f1 = pall [some digit, string ".", many digit, optional exponentPart "", optSuffix]
         f2 = pall [string ".", some digit, optional exponentPart "", optSuffix]
         f3 = pall [some digit, exponentPart, optSuffix]
@@ -128,7 +128,7 @@ decimalFloatingPointLiteral = using concat $ pany [f1, f2, f3, f4]
         optSuffix = optional (using (:[]) floatTypeSuffix) ""
         
         
-floatingPointLiteral :: Parser Char String
+floatingPointLiteral :: Parser Char Double
 floatingPointLiteral = decimalFloatingPointLiteral
 
 
@@ -141,20 +141,29 @@ decimalNumeral = alt (string "0") (using (uncurry (:)) $ pseq nonZeroDigit $ man
   where nonZeroDigit = pany $ map literal ['1' .. '9']
 
 
-decimalIntegerLiteral :: Parser Char String
-decimalIntegerLiteral = using concat $ pall [decimalNumeral, optional (using (:[]) integerTypeSuffix) ""]
+decimalIntegerLiteral :: Parser Char Integer
+decimalIntegerLiteral = ignoreRight (using read decimalNumeral) (optional (using (:[]) integerTypeSuffix) "")
 
 
-integerLiteral :: Parser Char String
+integerLiteral :: Parser Char Integer
 integerLiteral = decimalIntegerLiteral
 
 
-jliteral :: Parser Char String
-jliteral = pany [integerLiteral, floatingPointLiteral, booleanLiteral, using (:[]) characterLiteral, stringLiteral, nullLiteral]
+jliteral :: Parser Char Literal
+jliteral = pany [using LInteger integerLiteral, 
+                 using LFloat floatingPointLiteral, 
+                 using LBool booleanLiteral, 
+                 using LChar characterLiteral, 
+                 using LString stringLiteral, 
+                 using (const LNull) nullLiteral]
   
   
-token :: Parser Char String
-token = pany [identifier, keyword, jliteral, using (:[]) separator, operator]
+token :: Parser Char Token
+token = pany [using Identifier identifier, 
+              using Keyword keyword, 
+              using Literal jliteral, 
+              using Separator separator, 
+              using (const $ Operator No) operator]
 
 
 -- I believe this is end of input
@@ -172,11 +181,13 @@ comment :: Parser Char String
 comment = ignoreLeft (string "//") (many inputCharacter)
 
   
-inputElement :: Parser Char String
-inputElement = pany [using concat $ some whitespace, comment, token]
+inputElement :: Parser Char InputElement
+inputElement = pany [using (Whitespace . concat) $ some whitespace,
+                     using Comment comment,
+                     using Token token]
 
 
-scanner :: Parser Char [String]
+scanner :: Parser Char [InputElement]
 scanner = many inputElement
 
 
