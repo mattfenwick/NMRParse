@@ -5,26 +5,7 @@ module Java (
 ) where
 
 import ParserCombinators
-
-
-data InputElement
-  = WhiteSpace String
-  | Comment String
-  | Token Token
-  deriving (Show)
-
-data Token
-  = Identifier String
-  deriving (Show)
-{-
-  | Keyword Keyword
-  | Literal -- ???
-  | Separator Separator
-  | Operator Operator
-  
-  
--}  
-  
+import JavaTokens
   
   
 -- ------------------
@@ -47,16 +28,7 @@ nullLiteral = string "null"
 
 
 keyword :: Parser Char String
-keyword = pany $ map string ["abstract", "continue", "for", "new", "switch", 
-    "assert",  "default", "if",         "package",   "synchronized", 
-    "boolean", "do",      "goto",       "private",   "this", 
-    "break",   "double",  "implements", "protected", "throw", 
-    "byte",    "else",    "import",     "public",    "throws",
-    "case",    "enum",    "instanceof", "return",    "transient",
-    "catch",   "extends", "int",        "short",     "try", 
-    "char",    "final",   "interface",  "static",    "void",
-    "class",   "finally", "long",       "strictfp",  "volatile", 
-    "const",   "float",   "native",     "super",     "while"]
+keyword = pany $ map string keywordNames
 
 
 javaLetter :: Parser Char Char
@@ -72,29 +44,46 @@ identifierRest = many javaLetterOrDigit
     
     
 identifier :: Parser Char String
-identifier = ignoreLeft (pnpnone [booleanLiteral, nullLiteral, keyword]) name
+identifier = usingFail nameCheck name
   where name = using (uncurry (:)) $ pseq javaLetter identifierRest
+        nameCheck x 
+          | elem x (keywordNames ++ ["true", "false", "null"]) = Left ""
+          | otherwise = Right x
   
   
 singleCharacter :: Parser Char Char
 singleCharacter = pnone "\r\f'\\\n" -- whoa! \n wasn't in the spec!
 
 
-escapeSequence :: Parser Char String
-escapeSequence = pany $ map string ["\\b", "\\t", 
+escapeToChar :: String -> Either String Char
+escapeToChar esc = check $ lookup esc escapes
+  where escapes = [("\\b", '\b'),
+                   ("\\t", '\t'),
+                   ("\\n", '\n'),
+                   ("\\f", '\f'),
+                   ("\\r", '\r'),
+                   ("\\\"", '"'),
+                   ("\\'", '\''),
+                   ("\\\\", '\\')]
+        check Nothing = Left ("unable to translate escape sequence " ++ esc)
+        check (Just x) = Right x
+                   
+
+escapeSequence :: Parser Char Char
+escapeSequence = usingFail escapeToChar $ pany $ map string ["\\b", "\\t", 
     "\\n", "\\f", "\\r", "\\\"", "\\'", "\\\\"]
 
 
-characterLiteral :: Parser Char String
-characterLiteral = ignoreLeft sq $ ignoreRight (alt (using (:[]) singleCharacter) escapeSequence) sq
+characterLiteral :: Parser Char Char
+characterLiteral = ignoreLeft sq $ ignoreRight (alt singleCharacter escapeSequence) sq
   where sq = literal '\''
   
   
-stringCharacter :: Parser Char String
-stringCharacter = alt (using (:[]) $ pnone "\r\f\"\\\n") escapeSequence -- whoa! \n wasn't in the spec!
+stringCharacter :: Parser Char Char
+stringCharacter = alt (pnone "\r\f\"\\\n") escapeSequence    -- whoa! \n wasn't in the spec!
 
   
-stringLiteral :: Parser Char [String]
+stringLiteral :: Parser Char String
 stringLiteral = ignoreLeft dq $ ignoreRight (many stringCharacter) dq
   where dq = literal '"'
 
@@ -161,7 +150,7 @@ integerLiteral = decimalIntegerLiteral
 
 
 jliteral :: Parser Char String
-jliteral = pany [integerLiteral, floatingPointLiteral, booleanLiteral, characterLiteral, using concat stringLiteral, nullLiteral]
+jliteral = pany [integerLiteral, floatingPointLiteral, booleanLiteral, using (:[]) characterLiteral, stringLiteral, nullLiteral]
   
   
 token :: Parser Char String
@@ -184,7 +173,7 @@ comment = ignoreLeft (string "//") (many inputCharacter)
 
   
 inputElement :: Parser Char String
-inputElement = pany [whitespace, comment, token]
+inputElement = pany [using concat $ some whitespace, comment, token]
 
 
 scanner :: Parser Char [String]

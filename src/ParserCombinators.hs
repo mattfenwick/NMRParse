@@ -5,6 +5,7 @@ module ParserCombinators (
     , pseq
     , alt
     , using
+    , usingFail
     , literal
     , many
     , preturn
