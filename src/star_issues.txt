@@ -1,0 +1,18 @@
+star problems:
+
+ - implicit things
+   - end of data block implied by open of next data/global or end of file.  no explicit end
+   - no explicit end of loop block
+
+ - redundancy
+   - 5 ways to create a data value
+
+ - special cases
+   - reserved words
+
+ - context dependence
+   - type 1 data values preceded by blank; type 2 by a terminate.  what's the point?
+   - ; can begin ;-bounded string or non_quoted_I_string
+
+ - case-insensitivity
+   - save_ or SAVE_
