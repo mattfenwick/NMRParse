@@ -21,7 +21,6 @@ data Token =
   | Stop
   | Identifier String
   | Value String
-  | Global
   deriving (Show, Eq)
 
 
@@ -51,10 +50,6 @@ newline = using Newline $ some $ pany $ map literal "\n\r\f"
 
 stop :: Parser Char Token
 stop = preturn Stop $ string "stop_"
-
-
-global :: Parser Char Token
-global = preturn Global $ string "global_"
 
 
 loop :: Parser Char Token
@@ -90,7 +85,7 @@ value = pany [sqstring, dqstring, scstring, sbstring, uq]
 
 
 oneToken :: Parser Char Token
-oneToken = pany [dataOpen, saveOpen, saveClose, loop, stop, global, value, whitespace, newline, comment, identifier]
+oneToken = pany [dataOpen, saveOpen, saveClose, loop, stop, value, whitespace, newline, comment, identifier]
 
 
 scanner :: Parser Char [Token]
@@ -113,9 +108,8 @@ data AST
   = PLoop [Token] [Token]
   | PSave [AST]
   | PDatum Token Token
-  | PGlobal [AST]
   | PData [AST]
-  | PStar [AST]
+  | PStar AST
   deriving (Show, Eq)
 
 
@@ -151,22 +145,14 @@ datum = using (uncurry PDatum) $ pseq ident val
 pSave :: Parser Token AST
 pSave = using PSave $ ignoreLeft saveme $ ignoreRight contents (literal SaveClose)
   where contents = some $ alt datum pLoop
-  
-
-{- are these not used in NMR-Star files?
-pGlobal :: Parser Token AST  
-pGlobal = using PGlobal $ ignoreLeft (literal Global) contents
-  where contents = some $ alt datum pSave
--}
 
 
 pData :: Parser Token AST
-pData = using PData $ ignoreLeft datame contents
-  where contents = some $ alt datum pSave
+pData = using PData $ ignoreLeft datame (some pSave)
   
   
 pStar :: Parser Token AST
-pStar = using PStar (many pData)
+pStar = using PStar pData
 
 
 parseMe :: Parser Token AST 
