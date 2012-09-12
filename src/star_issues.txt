@@ -16,3 +16,8 @@ star problems:
 
  - case-insensitivity
    - save_ or SAVE_
+   
+ - delimited strings
+   - don't have escape characters -- so can't have all characters in a string
+   - the closing character depends on its following context for its meaning:
+      i.e. 'a'' is a valid string, whereas 'a' ' is a valid string followed by space '
