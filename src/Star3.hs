@@ -4,6 +4,8 @@ module Star3 (
 
 import ParserCombinators
 import System.IO
+import System.Directory
+import Data.List
   
   
 -- ------------------
@@ -61,23 +63,28 @@ identifier = using Identifier $ ignoreLeft (literal '_') (some $ pnone " \t\n\r\
 
 
 sqstring :: Parser Char Token
-sqstring = using Value $ ignoreLeft (literal '\'') $ ignoreRight (some $ pnot '\'') (literal '\'')
+sqstring = using Value $ ignoreLeft (literal '\'') $ ignoreRight (many $ pnot '\'') (literal '\'')
 
 
 dqstring :: Parser Char Token
-dqstring = using Value $ ignoreLeft (literal '"') $ ignoreRight (some $ pnot '"') (literal '"')
+dqstring = using Value $ ignoreLeft (literal '"') $ ignoreRight (many $ pnot '"') (literal '"')
 
 
 scstring :: Parser Char Token
-scstring = using Value $ ignoreLeft (literal ';') $ ignoreRight (some $ pnot ';') (literal ';')
+scstring = using Value $ ignoreLeft (literal ';') $ ignoreRight (many $ pnot ';') (literal ';')
 
 
 sbstring :: Parser Char Token
-sbstring = using Value $ ignoreLeft (literal '[') $ ignoreRight (some $ pnone "[]") (literal ']')
+sbstring = using Value $ ignoreLeft (literal '[') $ ignoreRight (many $ pnone "[]") (literal ']')
+-- here's one possible way to allow balance [] inside:
+--    sbstring = using Value theThing
+--      where theThing = ignoreLeft (literal '[') $ ignoreRight content (literal ']')
+--        content = using concat $ many $ alt (using (:[]) $ pnone "[]") theThing
+
 
 
 uq :: Parser Char Token
-uq = using (\(x,y) -> Value (x:y)) $ pseq (pnone "\"#'[]_ \t\v\r\f\n") (many $ pnone "\"#'[] \t\v\r\f\n")
+uq = using (\(x,y) -> Value (x:y)) $ pseq (pnone "\"#'[]_ \t\v\r\f\n") (many $ pnone " \t\v\r\f\n")
 
 
 value :: Parser Char Token
@@ -149,10 +156,15 @@ pSave = using PSave $ ignoreLeft saveme $ ignoreRight contents (literal SaveClos
 
 pData :: Parser Token AST
 pData = using PData $ ignoreLeft datame (some pSave)
+
+
+end :: Parser Token ()
+end [] = succeed () []
+end xs = pfail "failed to match end of input" xs
   
   
 pStar :: Parser Token AST
-pStar = using PStar pData
+pStar = using PStar $ ignoreRight pData end
 
 
 parseMe :: Parser Token AST 
@@ -171,6 +183,11 @@ test2 = myReadFile "bmrb2.1.txt" >>= (return . testParse)
 
 
 test3 = myReadFile "bmrb3.0.txt" >>= (return . testParse)
+
+
+path = "../../../Desktop/nmr_software/new_bmrb_files/"
+bigtest = getDirectoryContents path >>=
+  (\x -> let them = filter (isPrefixOf "bmrb") x in mapM (\y -> myReadFile (path ++ y) >>= (\z -> return (y, testParse z))) $ take 50 them)
 
 
 q = [Loop,Newline "\n",Whitespace "      ",Identifier "Author_ordinal",Newline "\n",Whitespace "      ",Identifier "Author_family_name",Newline "\n",Whitespace "      ",Identifier "Author_given_name",Newline "\n",Whitespace "      ",Identifier "Author_middle_initials",Newline "\n",Whitespace "      ",Identifier "Author_family_title",Newline "\n\n",Whitespace "      ",Value "1",Whitespace " ",Value "Gao",Whitespace "      ",Value "Yuan",Whitespace "     ",Value ".",Whitespace "    ",Value ".",Whitespace " ",Newline "\n",Whitespace "      ",Value "2",Whitespace " ",Value "Boyd",Whitespace "     ",Value "Jonathan",Whitespace " ",Value ".",Whitespace "    ",Value ".",Whitespace " ",Newline "\n",Whitespace "      ",Value "3",Whitespace " ",Value "Pielak",Whitespace "   ",Value "Gary",Whitespace "     ",Value "J.",Whitespace "   ",Value ".",Whitespace " ",Newline "\n",Whitespace "      ",Value "4",Whitespace " ",Value "Williams",Whitespace " ",Value "Robert",Whitespace "   ",Value "J.P.",Whitespace " ",Value ".",Whitespace " ",Newline "\n\n",Whitespace "   ",Stop]

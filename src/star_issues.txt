@@ -21,3 +21,11 @@ star problems:
    - don't have escape characters -- so can't have all characters in a string
    - the closing character depends on its following context for its meaning:
       i.e. 'a'' is a valid string, whereas 'a' ' is a valid string followed by space '
+      
+      
+      
+files with problems:
+
+  - bmrb24, line 816:   [amino-[[(4S)-4,5-diamino-5-oxo-pentyl]amino]methylidene]azanium
+    this isn't a [] bounded string, since it has characters after the last balancing ],
+    but also isn't a non-quoted string since those can't begin with [
