@@ -129,12 +129,6 @@ val (Value v:rest) = succeed (Value v) rest
 val x = pfail "failed to get a value" x
 
 
-ws :: Parser Token Token
-ws (Whitespace w:rest) = succeed (Whitespace w) rest
-ws (Newline n:rest) = succeed (Newline n) rest
-ws x = pfail "failed to get ws" x
-
-
 saveme :: Parser Token Token
 saveme (SaveOpen s:rest) = succeed (SaveOpen s) rest
 saveme x = pfail "failed to get save open" x
@@ -146,38 +140,41 @@ datame x = pfail "failed to get data open" x
 
 
 pLoop :: Parser Token AST
-pLoop = using (uncurry PLoop) $ ignoreLeft (literal Loop) $ ignoreRight stuff $ pseq (some ws) (literal Stop)
-  where stuff = pseq (many $ ignoreLeft (some ws) ident) (many $ ignoreLeft (some ws) val)
+pLoop = using (uncurry PLoop) $ ignoreLeft (literal Loop) $ ignoreRight stuff (literal Stop)
+  where stuff = pseq (many ident) (many val)
   
   
 datum :: Parser Token AST
-datum = using (uncurry PDatum) $ pseq ident $ ignoreLeft (some ws) val
+datum = using (uncurry PDatum) $ pseq ident val
   
   
 pSave :: Parser Token AST
-pSave = using PSave $ ignoreLeft saveme $ ignoreRight contents $ pseq (some ws) (literal SaveClose)
-  where contents = some $ ignoreLeft (some ws) $ alt datum pLoop
+pSave = using PSave $ ignoreLeft saveme $ ignoreRight contents (literal SaveClose)
+  where contents = some $ alt datum pLoop
   
 
 {- are these not used in NMR-Star files?
 pGlobal :: Parser Token AST  
-pGlobal = using PGlobal $ ignoreLeft (literal Global) $ ignoreRight contents (some ws)
+pGlobal = using PGlobal $ ignoreLeft (literal Global) contents
   where contents = some $ alt datum pSave
 -}
 
 
 pData :: Parser Token AST
-pData = using PData $ ignoreLeft datame $ ignoreRight contents (some ws)
-  where contents = some $ ignoreLeft (some ws) $ alt datum pSave
+pData = using PData $ ignoreLeft datame contents
+  where contents = some $ alt datum pSave
   
   
 pStar :: Parser Token AST
-pStar = using PStar $ ignoreLeft (many ws) (many pData)
+pStar = using PStar (many pData)
 
 
 parseMe :: Parser Token AST 
-parseMe = pStar . filter notComment
-  where notComment x = case x of (Comment _) -> False; _ -> True
+parseMe = pStar . filter notCommentOrWs
+  where notCommentOrWs (Comment _) = False
+        notCommentOrWs (Newline _) = False
+        notCommentOrWs (Whitespace _) = False
+        notCommentOrWs _ = True
   
   
 -- testParse :: String -> Either String AST
