@@ -63,7 +63,11 @@ identifier = using Identifier $ ignoreLeft (literal '_') (some $ pnone " \t\n\r\
 
 
 sqstring :: Parser Char Token
-sqstring = using Value $ ignoreLeft (literal '\'') $ ignoreRight (many $ pnot '\'') (literal '\'')
+-- sqstring = using Value $ ignoreLeft (literal '\'') $ ignoreRight (many $ pnot '\'') (literal '\'')
+sqstring = using Value $ ignoreLeft sq $ ignoreRight content sq
+  where sq = literal '\''
+        content = many $ alt (pnot '\'') non_ending_sq
+        non_ending_sq = ignoreRight sq (lookahead $ pnone " \t\n\r\f\v")
 
 
 dqstring :: Parser Char Token
@@ -71,12 +75,14 @@ dqstring = using Value $ ignoreLeft (literal '"') $ ignoreRight (many $ pnot '"'
 
 
 scstring :: Parser Char Token
-scstring = using Value $ ignoreLeft (literal ';') $ ignoreRight (many $ pnot ';') (literal ';')
+scstring = using Value $ ignoreLeft (literal ';') $ ignoreRight chars endsequence
+  where chars = many $ ignoreLeft (pnpnot endsequence) getOne
+        endsequence = pseq (pany $ map literal "\n\r\f") (literal ';')
 
 
 sbstring :: Parser Char Token
 sbstring = using Value $ ignoreLeft (literal '[') $ ignoreRight (many $ pnone "[]") (literal ']')
--- here's one possible way to allow balance [] inside:
+-- here's one possible way to allow balanced [] inside:
 --    sbstring = using Value theThing
 --      where theThing = ignoreLeft (literal '[') $ ignoreRight content (literal ']')
 --        content = using concat $ many $ alt (using (:[]) $ pnone "[]") theThing
@@ -165,6 +171,7 @@ end xs = pfail "failed to match end of input" xs
   
 pStar :: Parser Token AST
 pStar = using PStar $ ignoreRight pData end
+-- pStar = using PStar pData
 
 
 parseMe :: Parser Token AST 
@@ -195,4 +202,11 @@ bigtest = getDirectoryContents path >>=
   (\x -> let them = filter (isPrefixOf "bmrb") x 
          in mapM (\y -> myReadFile (path ++ y) >>= 
                  (\z -> putStrLn $ hmm (y ++ " " ++ (show $ length z)) (testParse z))) them)
+                 
+                 
+parseFile :: String -> IO (Either String ([Token], AST))
+parseFile name = myReadFile (path ++ name) >>=
+  (return . testParse)
+  
+  
 
