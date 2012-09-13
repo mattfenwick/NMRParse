@@ -2,10 +2,11 @@ module Star3 (
 
 ) where
 
-import ParserCombinators
+import PCs2 -- arserCombinators
 import System.IO
 import System.Directory
 import Data.List
+import Control.Monad
   
   
 -- ------------------
@@ -111,7 +112,7 @@ myReadFile path =
   
   
 -- test :: IO (Parser Strin
-test = myReadFile "bmrb2.1.txt" >>= (return . scanner)
+test = myReadFile "bmrb2.1.txt" >>= \str -> return $ scanner (str, 0)
 
 
 -------------
@@ -127,23 +128,23 @@ data AST
 
 
 ident :: Parser Token Token
-ident (Identifier x:rest) = succeed (Identifier x) rest
-ident x = pfail "failed to get an identifier" x
+ident (Identifier x:rest, cts) = succeed (Identifier x) (rest, cts)
+ident x = pfail ["identifier"] x
 
 
 val :: Parser Token Token
-val (Value v:rest) = succeed (Value v) rest
-val x = pfail "failed to get a value" x
+val (Value v:rest, cts) = succeed (Value v) (rest, cts)
+val x = pfail ["value"] x
 
 
 saveme :: Parser Token Token
-saveme (SaveOpen s:rest) = succeed (SaveOpen s) rest
-saveme x = pfail "failed to get save open" x
+saveme (SaveOpen s:rest, cts) = succeed (SaveOpen s) (rest, cts)
+saveme x = pfail ["save open"] x
 
 
 datame :: Parser Token Token
-datame (DataOpen s:rest) = succeed (DataOpen s) rest
-datame x = pfail "failed to get data open" x
+datame (DataOpen s:rest, cts) = succeed (DataOpen s) (rest, cts)
+datame x = pfail ["data open"] x
 
 
 pLoop :: Parser Token AST
@@ -162,11 +163,6 @@ pSave = using PSave $ ignoreLeft saveme $ ignoreRight contents (literal SaveClos
 
 pData :: Parser Token AST
 pData = using PData $ ignoreLeft datame (some pSave)
-
-
-end :: Parser Token ()
-end [] = succeed () []
-end xs = pfail "failed to match end of input" xs
   
   
 pStar :: Parser Token AST
@@ -175,21 +171,23 @@ pStar = using PStar $ ignoreRight pData end
 
 
 parseMe :: Parser Token AST 
-parseMe = pStar . filter notCommentOrWs
+parseMe (tks, ct) = pStar ((filter notCommentOrWs tks), ct)
   where notCommentOrWs (Comment _) = False
         notCommentOrWs (Newline _) = False
         notCommentOrWs (Whitespace _) = False
         notCommentOrWs _ = True
   
   
--- testParse :: String -> Either String AST
-testParse x = scanner x >>= (return . snd) >>= parseMe
+-- testParse :: String -> Either (Failure Token) (([Token], Integer), AST)
+testParse x = doTheParsing $ liftM snd (scanner (x, 0))
+  where doTheParsing (Right x) = parseMe (x, 0)
+        doTheParsing (Left x) = Left (["the tokenization failed"], ([], 0))
   
   
-test2 = myReadFile "bmrb2.1.txt" >>= (return . testParse)
+test2 = liftM testParse $ myReadFile "bmrb2.1.txt"
 
 
-test3 = myReadFile "bmrb3.0.txt" >>= (return . testParse)
+test3 = liftM testParse $ myReadFile "bmrb3.0.txt"
 
 
 hmm :: String -> Either a b -> String
@@ -204,9 +202,7 @@ bigtest = getDirectoryContents path >>=
                  (\z -> putStrLn $ hmm (y ++ " " ++ (show $ length z)) (testParse z))) them)
                  
                  
-parseFile :: String -> IO (Either String ([Token], AST))
-parseFile name = myReadFile (path ++ name) >>=
-  (return . testParse)
-  
+-- parseFile :: String -> IO (Either String ([Token], AST))
+parseFile name = liftM testParse $ myReadFile (path ++ name)
   
 

@@ -15,9 +15,10 @@ module PCs2 (
     , some
     , pnone
     , pnot
+    , end
 
     , Parser
- 
+    
     , digit
     , integer
     , alpha
