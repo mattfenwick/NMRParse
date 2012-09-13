@@ -35,6 +35,7 @@ module ParserCombinators (
     , getOne
     , message
     , optional
+    , lookahead
     
 ) where
 
