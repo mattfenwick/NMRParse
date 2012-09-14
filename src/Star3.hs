@@ -81,21 +81,12 @@ scstring = using Value $ ignoreLeft (literal ';') $ ignoreRight chars endsequenc
         endsequence = pseq (pany $ map literal "\n\r\f") (literal ';')
 
 
-sbstring :: Parser Char Token
-sbstring = using Value $ ignoreLeft (literal '[') $ ignoreRight (many $ pnone "[]") (literal ']')
--- here's one possible way to allow balanced [] inside:
---    sbstring = using Value theThing
---      where theThing = ignoreLeft (literal '[') $ ignoreRight content (literal ']')
---        content = using concat $ many $ alt (using (:[]) $ pnone "[]") theThing
-
-
-
 uq :: Parser Char Token
-uq = using (\(x,y) -> Value (x:y)) $ pseq (pnone "\"#'[]_ \t\v\r\f\n") (many $ pnone " \t\v\r\f\n")
+uq = using (\(x,y) -> Value (x:y)) $ pseq (pnone "\"#'_ \t\v\r\f\n") (many $ pnone " \t\v\r\f\n")
 
 
 value :: Parser Char Token
-value = pany [sqstring, dqstring, scstring, sbstring, uq]
+value = pany [sqstring, dqstring, scstring, uq]
 
 
 oneToken :: Parser Char Token
@@ -103,7 +94,8 @@ oneToken = pany [dataOpen, saveOpen, saveClose, loop, stop, value, whitespace, n
 
 
 scanner :: Parser Char [Token]
-scanner = many oneToken
+-- scanner = many oneToken
+scanner = ignoreRight (many oneToken) end
 
 
 myReadFile :: String -> IO String
@@ -181,7 +173,8 @@ parseMe (tks, ct) = pStar ((filter notCommentOrWs tks), ct)
 -- testParse :: String -> Either (Failure Token) (([Token], Integer), AST)
 testParse x = doTheParsing $ liftM snd (scanner (x, 0))
   where doTheParsing (Right x) = parseMe (x, 0)
-        doTheParsing (Left x) = Left (["the tokenization failed"], ([], 0))
+        doTheParsing (Left x) = Left (["the tokenization failed"], ([], 0)) -- so that one file doesn't kill everything
+--        doTheParsing (Left (a, (b, c))) = error $ "tokenization failed: " ++ show (a, (take 200 b, c)) -- to get the context
   
   
 test2 = liftM testParse $ myReadFile "bmrb2.1.txt"
@@ -190,9 +183,9 @@ test2 = liftM testParse $ myReadFile "bmrb2.1.txt"
 test3 = liftM testParse $ myReadFile "bmrb3.0.txt"
 
 
-hmm :: String -> Either a b -> String
+hmm :: Show a => String -> Either (a, b) c -> String
 hmm x (Right y) = x ++ "  Success!"
-hmm x (Left z) = x ++ "  Failure ..."
+hmm x (Left z) = x ++ "  Failure ... " ++ (show $ fst z)
 
 
 path = "../../../Desktop/nmr_software/new_bmrb_files/"
