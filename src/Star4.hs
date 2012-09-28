@@ -98,7 +98,7 @@ scstring = literal ';' <|> \_ ->
   chars <|> \cs ->
   endsequence <|> \_ ->
   succeed (Value cs)
-    where chars = many $ ignoreLeft (pnpnot endsequence) getOne
+    where chars = many (not1 endsequence)
           endsequence = pseq (pany $ map literal "\n\r\f") (literal ';')
 
 

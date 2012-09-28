@@ -25,16 +25,14 @@ module PCs4 (
     , alpha
     , wschar
     
-    -- hmmmm
-    , pseq2
-    , pseq3
+    -- a bit more obscure, less general
     , string
     , separatedBy0
     , separatedBy1
     , ignoreLeft
     , ignoreRight
-    , pnpnot
-    , pnpnone
+    , not0
+    , not1
     , getOne
     , message
     , optional
@@ -148,20 +146,25 @@ ignoreLeft l r = l <|>
 -- match both parsers in sequence, and return
 --   the value of the first parser
 ignoreRight :: Parser a b -> Parser a c -> Parser a b
-ignoreRight l r = using (uncurry const) $ pseq l r
+ignoreRight l r = l <|> 
+  \lval -> r <|>
+  \_  -> succeed lval
 
 
--- match 0 or more of the parser
+-- match parser 0 or more times
+--   couldn't this also be accomplished with a fold?
 many :: Parser a b -> Parser a [b]
-many p = (using cons parser) `alt` (succeed [])
-  where cons = uncurry (:)
-        parser = pseq p $ many p
+many p = matcher `alt` (succeed [])
+  where matcher = p <|>
+          \v  -> (many p) <|>
+          \vs -> succeed (v:vs)
         
         
--- match 1 or more of the parser
+-- match parser 1 or more times
 some :: Parser a b -> Parser a [b]
-some p = using cons $ pseq p $ many p
-  where cons = uncurry (:)
+some p = p <|>
+  \v -> (many p) <|>
+  \vs -> succeed (v:vs)
   
   
 -- match any of the parsers
@@ -175,9 +178,12 @@ preturn v p = using (const v) p
   
   
 -- matches all of the parsers in sequence
-pall :: [Parser a b] -> Parser a [b]
-pall = foldr (\p b -> using cons (pseq p b)) (succeed [])
-  where cons = uncurry (:)
+--   I really wish I understood this code (that I just wrote)
+pall = foldr f (succeed [])
+  where 
+    f p b =  p <|>
+      \v  -> b <|>
+      \vs -> succeed (v:vs)
   
   
 -- matches end of input
@@ -186,28 +192,23 @@ end ([], x) = succeed () ([], x)
 end ip = pfail ["end of input"] ip
   
   
-
+-- allow a function applied to the result
+--   cause the parser to fail
 usingFail :: (b -> Either (Failure a) c) -> Parser a b -> Parser a c
 usingFail f p inp = p inp >>= 
   \(rest, r) -> f r >>=
   \c -> return (rest, c)
-  
 
-pseq2 :: (b -> c -> d) -> Parser a b -> Parser a c -> Parser a d
-pseq2 f l r = using (uncurry f) $ pseq l r
-
-
-pseq3 :: (b -> c -> d -> e) -> Parser a b -> Parser a c -> Parser a d -> Parser a e
-pseq3 f l m r = using unpack $ pseq l $ pseq m r
-  where unpack (b, (c, d)) = f b c d
 
 -- ------------------------------
 -- other interesting combinators 
 
     
 separatedByOne :: Parser a b -> Parser a c -> Parser a ([b], [c])
-separatedByOne p s = using f $ pseq p (using unzip $ many $ pseq s p)
-  where f (fp, (oss, ops)) = (fp:ops, oss)
+separatedByOne p s = p <|>
+  \v1 -> (many $ pseq s p) <|>
+  \rs -> let (ss, vs) = unzip rs 
+         in succeed (v1:vs, ss)
   
 
 -- always succeeds
@@ -229,7 +230,7 @@ optional :: Parser a b -> b -> Parser a b
 optional p v = p `alt` (succeed v)
 
 
--- succeed but consume no input if parser succeeds
+-- succeed but consume no input if 'p' succeeds
 --   this is a very weird combinator and
 --   I don't feel comfortable with it
 lookahead :: Parser a b -> Parser a ()
@@ -238,17 +239,18 @@ lookahead p inp = tryIt $ p inp
         tryIt (Left _) = pfail ["'lookahead' predicate"] inp
 
 
--- doesn't match a parser, consumes no input
-pnpnot :: Parser a b -> Parser a ()
-pnpnot p inp = tryIt $ p inp
+-- succeeds if 'p' doesn't succeed
+--   consumes no input
+not0 :: Parser a b -> Parser a ()
+not0 p inp = tryIt $ p inp
   where tryIt (Left _) = succeed () inp
         tryIt _ = pfail ["'pnpnot' expected 0 matches, found 1"] inp
-        
-        
--- matches if none of the input parsers match; consumes no input
-pnpnone :: [Parser a b] -> Parser a ()
-pnpnone = preturn () . pall . map pnpnot
 
+
+-- succeeds if 'p' doesn't match,
+--   and consumes one token
+not1 :: Parser a b -> Parser a a
+not1 p = ignoreLeft (not0 p) getOne
 
 
     
@@ -285,12 +287,20 @@ string :: (Eq a, Show a) => [a] -> Parser a [a]
 string = pall . map literal
 
 
--- matches if next token is not x
+-- matches if next token is not x,
+--   and consumes one token
 pnot :: (Eq a) => a -> Parser a a
 pnot x = satisfy (/= x)
+-- how about:
+--  pnot x = not1 (literal x)
+--  pnot = not1 . literal
 
 
--- matches if next token is not in xs
+-- matches if next token is not in xs,
+--   consuming one token
 --   not sure if I like this one
 pnone :: (Eq a) => [a] -> Parser a a
 pnone xs = satisfy (\x -> not $ elem x xs)
+-- how about:
+--  pnone xs = not1 (map literal xs)
+--  pnone = not1 . map literal
