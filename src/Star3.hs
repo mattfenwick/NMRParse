@@ -94,7 +94,6 @@ oneToken = pany [dataOpen, saveOpen, saveClose, loop, stop, value, whitespace, n
 
 
 scanner :: Parser Char [Token]
--- scanner = many oneToken
 scanner = ignoreRight (many oneToken) end
 
 
@@ -103,7 +102,7 @@ myReadFile path =
   openFile path ReadMode >>= hGetContents
   
   
--- test :: IO (Parser Strin
+
 test = myReadFile "bmrb2.1.txt" >>= \str -> return $ scanner (str, 0)
 
 
@@ -159,7 +158,6 @@ pData = using PData $ ignoreLeft datame (some pSave)
   
 pStar :: Parser Token AST
 pStar = using PStar $ ignoreRight pData end
--- pStar = using PStar pData
 
 
 parseMe :: Parser Token AST 
@@ -173,7 +171,7 @@ parseMe (tks, ct) = pStar ((filter notCommentOrWs tks), ct)
 -- testParse :: String -> Either (Failure Token) (([Token], Integer), AST)
 testParse x = doTheParsing $ liftM snd (scanner (x, 0))
   where doTheParsing (Right x) = parseMe (x, 0)
-        doTheParsing (Left x) = Left (["the tokenization failed"], ([], 0)) -- so that one file doesn't kill everything
+        doTheParsing (Left x) = Left (["the tokenization failed"], ([], 0)) -- so that one file's failure doesn't kill everything
 --        doTheParsing (Left (a, (b, c))) = error $ "tokenization failed: " ++ show (a, (take 200 b, c)) -- to get the context
   
   

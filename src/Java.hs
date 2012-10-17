@@ -9,7 +9,7 @@ import JavaTokens
   
   
 -- ------------------
--- the parsers
+-- the token parsers
 
 inputCharacter :: Parser Char Char
 inputCharacter = pnone ['\r', '\f', '\n'] -- whoa! \n wasn't in the spec!
@@ -189,7 +189,6 @@ inputElement = pany [using (Whitespace . concat) $ some whitespace,
 
 scanner :: Parser Char [InputElement]
 scanner = many inputElement
-
 
 
   
