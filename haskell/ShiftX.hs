@@ -6,6 +6,7 @@ module ShiftX (
 
 ) where
 
+import System.IO (openFile, hGetContents, IOMode(ReadMode))
 import ParserCombinators
 
 
@@ -78,3 +79,9 @@ shiftx = pseq2 ShiftX (ignoreRight sxhead newline) body
   where body = ignoreLeft (ignoreRight dashes newline) (blow sxline newline)
 
 
+-- ---
+
+eg1 = do
+  h <- openFile "shiftx/shiftx.txt" ReadMode
+  x <- hGetContents h
+  return $ shiftx x

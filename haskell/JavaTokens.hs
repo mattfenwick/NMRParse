@@ -1,13 +1,10 @@
 module JavaTokens (
     
     Keyword(..)
-  , keywordNames
-  , nameToKeyword
     
   , Literal(..)
   
   , Separator(..)
-  , stringToSeparator
   
   , Operator(..)
   
@@ -75,16 +72,6 @@ data Keyword
   deriving (Show, Eq, Bounded, Enum, Read)
 
 
-keywordNames :: [String]
-keywordNames = map (tail . show) ([minBound .. maxBound] :: [Keyword])
-
-
-nameToKeyword :: String -> Either String Keyword 
-nameToKeyword s = case reads ('K':s) of
-                       [(x, "")] -> Right x
-                       _ -> Left ("could not get keyword from string " ++ s)
-
-
 data Literal 
   = LNull
   | LBool Bool
@@ -108,23 +95,44 @@ data Separator
   deriving (Show, Eq)
   
   
-stringToSeparator :: Char -> Either String Separator
-stringToSeparator s = check $ lookup s seps
-  where seps = [('(', OpenParen),
-                (')', CloseParen),
-                ('{', OpenCurly),
-                ('}', CloseCurly),
-                ('[', OpenSquare),
-                (']', CloseSquare),
-                (',', Comma),
-                (';', Semicolon),
-                ('.', Period)]
-        check Nothing = Left ("unable to translate separator " ++ [s])
-        check (Just x) = Right x 
-  
-  
 data Operator
-  = No
+  = Equals
+  | GreaterThan
+  | LessThan
+  | ExclamationPoint
+  | Tilda
+  | QuestionMark
+  | Colon
+  | DoubleEquals
+  | LessThanOrEquals
+  | GreaterThanOrEquals
+  | NotEquals
+  | AndAnd
+  | OrOr
+  | PlusPlus
+  | MinusMinus
+  | Plus
+  | Minus
+  | Times
+  | DivideBy
+  | And
+  | Or
+  | ToThe
+  | Percentage
+  | DoubleLessThan
+  | DoubleGreaterThan
+  | TripleGreaterThan
+  | PlusEquals
+  | MinusEquals
+  | TimesEquals
+  | DivideByEquals
+  | AndEquals
+  | OrEquals
+  | ToTheEquals
+  | PercentageEquals
+  | DoubleLessThanEquals
+  | DoubleGreaterThanEquals
+  | TripleGreaterThanEquals
   deriving (Show, Eq)
 
 

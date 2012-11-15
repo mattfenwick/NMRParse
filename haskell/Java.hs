@@ -4,7 +4,10 @@ module Java (
 
 ) where
 
-import ParserCombinators
+import MParse
+import Classes
+import Instances
+import Prelude hiding (fmap, (>>=), (>>), fail, foldr, foldl)
 import JavaTokens
   
   
@@ -16,11 +19,11 @@ inputCharacter = pnone ['\r', '\f', '\n'] -- whoa! \n wasn't in the spec!
 
 
 lineTerminator :: Parser Char String
-lineTerminator = pany $ map string ["\r\f", "\r", "\f", "\n"]  -- whoa! \n wasn't in the spec!
+lineTerminator = mconcat $ map string ["\r\f", "\r", "\f", "\n"]  -- whoa! \n wasn't in the spec!
 
 
 booleanLiteral :: Parser Char Bool
-booleanLiteral = alt (preturn True $ string "true") (preturn False $ string "false")
+booleanLiteral = (string "true" *> pure True) <|> (string "false" *> pure False)
 
 
 nullLiteral :: Parser Char String
@@ -28,104 +31,166 @@ nullLiteral = string "null"
 
 
 keyword :: Parser Char Keyword
-keyword = usingFail nameToKeyword $ pany $ map string keywordNames
+keyword = mconcat $ map p [minBound .. maxBound]
+  where
+    p k = fmap (const k) $ string $ tail $ show k
 
 
-javaLetter :: Parser Char Char
-javaLetter = pany [alpha, literal '$', literal '_']
+letter :: Parser Char Char
+letter = satisfy isIn
+  where isIn c = elem c ("$_" ++ ['a' .. 'z'] ++ ['A' .. 'Z'])
 
 
-javaLetterOrDigit :: Parser Char Char
-javaLetterOrDigit = alt javaLetter digit
+digit = satisfy (flip elem ['0' .. '9'])
 
 
 identifierRest :: Parser Char String
-identifierRest = many javaLetterOrDigit
+identifierRest = many (letter <|> digit)
     
     
 identifier :: Parser Char String
-identifier = usingFail nameCheck name
-  where name = using (uncurry (:)) $ pseq javaLetter identifierRest
-        nameCheck x 
-          | elem x (keywordNames ++ ["true", "false", "null"]) = Left ""
-          | otherwise = Right x
+identifier = check (not . flip elem ["true", "false", "null"]) name
+  where name = fmap (:) letter <*> identifierRest
   
   
 singleCharacter :: Parser Char Char
 singleCharacter = pnone "\r\f'\\\n" -- whoa! \n wasn't in the spec!
 
 
-escapeToChar :: String -> Either String Char
-escapeToChar esc = check $ lookup esc escapes
-  where escapes = [("\\b", '\b'),
-                   ("\\t", '\t'),
-                   ("\\n", '\n'),
-                   ("\\f", '\f'),
-                   ("\\r", '\r'),
-                   ("\\\"", '"'),
-                   ("\\'", '\''),
-                   ("\\\\", '\\')]
-        check Nothing = Left ("unable to translate escape sequence " ++ esc)
-        check (Just x) = Right x
+escapes :: [(String, Char)]
+escapes = [("\\b",  '\b'),
+           ("\\t",  '\t'),
+           ("\\n",  '\n'),
+           ("\\f",  '\f'),
+           ("\\r",  '\r'),
+           ("\\\"", '"'),
+           ("\\'",  '\''),
+           ("\\\\", '\\')]
                    
 
 escapeSequence :: Parser Char Char
-escapeSequence = usingFail escapeToChar $ pany $ map string ["\\b", "\\t", 
-    "\\n", "\\f", "\\r", "\\\"", "\\'", "\\\\"]
+escapeSequence = mconcat $ map p escapes
+  where
+    p (s, c) = fmap (const c) $ string s
 
 
 characterLiteral :: Parser Char Char
-characterLiteral = ignoreLeft sq $ ignoreRight (alt singleCharacter escapeSequence) sq
+characterLiteral = sq *> (singleCharacter <|> escapeSequence) <* sq
   where sq = literal '\''
   
   
 stringCharacter :: Parser Char Char
-stringCharacter = alt (pnone "\r\f\"\\\n") escapeSequence    -- whoa! \n wasn't in the spec!
+stringCharacter = pnone "\r\f\"\\\n" <|> escapeSequence    -- whoa! \n wasn't in the spec!
 
   
 stringLiteral :: Parser Char String
-stringLiteral = ignoreLeft dq $ ignoreRight (many stringCharacter) dq
+stringLiteral = dq *> many stringCharacter <* dq
   where dq = literal '"'
 
 
+seps :: [(Char, Separator)]
+seps = [('(', OpenParen),
+        (')', CloseParen),
+        ('{', OpenCurly),
+        ('}', CloseCurly),
+        ('[', OpenSquare),
+        (']', CloseSquare),
+        (',', Comma),
+        (';', Semicolon),
+        ('.', Period)]
+
+
 separator :: Parser Char Separator
-separator = usingFail stringToSeparator $ pany $ map literal "(){}[];,."
+separator = mconcat $ map p seps
+  where 
+    p (c, sep) = fmap (const sep) $ literal c
 
 
-operator :: Parser Char String
-operator = pany $ map string ["=", ">", "<", "!", "~", "?", ":",
-    "==", "<=", ">=", "!=", "&&", "||", "++", "--",
-    "+", "-", "*", "/", "&", "|", "^", "%", "<<", ">>", ">>>",
-    "+=", "-=", "*=", "/=", "&=", "|=", "^=", "%=", "<<=", ">>=", ">>>="]
+ops :: [(String, Operator)]
+ops = [("=",    Equals),
+       (">",    GreaterThan),
+       ("<",    LessThan),
+       ("!",    ExclamationPoint),
+       ("~",    Tilda),
+       ("?",    QuestionMark),
+       (":",    Colon),
+       ("==",   DoubleEquals),
+       ("<=",   LessThanOrEquals),
+       (">=",   GreaterThanOrEquals),
+       ("!=",   NotEquals),
+       ("&&",   AndAnd),
+       ("||",   OrOr),
+       ("++",   PlusPlus),
+       ("--",   MinusMinus),
+       ("+",    Plus),
+       ("-",    Minus),
+       ("*",    Times),
+       ("/",    DivideBy),
+       ("&",    And),
+       ("|",    Or),
+       ("^",    ToThe),
+       ("%",    Percentage),
+       ("<<",   DoubleLessThan),
+       (">>",   DoubleGreaterThan),
+       (">>>",  TripleGreaterThan),
+       ("+=",   PlusEquals),
+       ("-=",   MinusEquals),
+       ("*=",   TimesEquals),
+       ("/=",   DivideByEquals),
+       ("&=",   AndEquals),
+       ("|=",   OrEquals),
+       ("^=",   ToTheEquals),
+       ("%=",   PercentageEquals),
+       ("<<=",  DoubleLessThanEquals),
+       (">>=",  DoubleGreaterThanEquals),
+       (">>>=", TripleGreaterThanEquals)]
+
+
+operator :: Parser Char Operator
+operator = mconcat $ map p ops
+  where p (s, op) = fmap (const op) $ string s
     
     
 floatTypeSuffix :: Parser Char Char
-floatTypeSuffix = pany $ map literal "dDfF"
+floatTypeSuffix = mconcat $ map literal "dDfF"
 
 
 sign :: Parser Char Char
-sign = alt (literal '+') (literal '-')
+sign = literal '+' <|> literal '-'
 
 
 signedInteger :: Parser Char String
-signedInteger = using (uncurry (:)) $ pseq (optional sign '+') (some digit)
+signedInteger = fmap f (optional sign) <*> (some digit)
+  where
+    f Nothing xs    =  xs
+    f (Just x) xs   =  x : xs
 
 
 exponentIndicator :: Parser Char Char
-exponentIndicator = alt (literal 'e') (literal 'E')
+exponentIndicator = literal 'e' <|> literal 'E'
 
 
 exponentPart :: Parser Char String
-exponentPart = using (uncurry (:)) $ pseq exponentIndicator signedInteger
+exponentPart = fmap (:) exponentIndicator <*> signedInteger
 
 
+optReturn :: a -> Parser t (Maybe a) -> Parser t a
+optReturn x = fmap f
+  where
+    f Nothing   =  x
+    f (Just y)  =  y
+
+
+-- TOTALLY F-ED UP !!!  PLEASE IMPROVE
+-- the read function can *FAIL* !!!!!
 decimalFloatingPointLiteral :: Parser Char Double
-decimalFloatingPointLiteral = using (read . concat) $ pany [f1, f2, f3, f4]
-  where f1 = pall [some digit, string ".", many digit, optional exponentPart "", optSuffix]
-        f2 = pall [string ".", some digit, optional exponentPart "", optSuffix]
-        f3 = pall [some digit, exponentPart, optSuffix]
-        f4 = pall [some digit, optional exponentPart "", using (:[]) floatTypeSuffix]
-        optSuffix = optional (using (:[]) floatTypeSuffix) ""
+decimalFloatingPointLiteral = fmap (read . concat) $ mconcat [f1, f2, f3, f4]
+  where f1 = commute [some digit,  string ".",    many digit,   optExp,       optSuffix]
+        f2 = commute [string ".",  some digit,    optExp,       optSuffix]
+        f3 = commute [some digit,  exponentPart,  optSuffix]
+        f4 = commute [some digit,  optExp,        fmap (:[]) floatTypeSuffix]
+        optSuffix = optReturn "" (optional $ fmap (:[]) floatTypeSuffix)
+        optExp = optReturn "" (optional exponentPart)
         
         
 floatingPointLiteral :: Parser Char Double
@@ -133,16 +198,16 @@ floatingPointLiteral = decimalFloatingPointLiteral
 
 
 integerTypeSuffix :: Parser Char Char
-integerTypeSuffix = alt (literal 'l') (literal 'L')
+integerTypeSuffix = literal 'l' <|> literal 'L'
 
 
 decimalNumeral :: Parser Char String
-decimalNumeral = alt (string "0") (using (uncurry (:)) $ pseq nonZeroDigit $ many digit)
-  where nonZeroDigit = pany $ map literal ['1' .. '9']
+decimalNumeral = string "0" <|> (fmap (:) nonZeroDigit <*> many digit)
+  where nonZeroDigit = mconcat $ map literal ['1' .. '9']
 
 
 decimalIntegerLiteral :: Parser Char Integer
-decimalIntegerLiteral = ignoreRight (using read decimalNumeral) (optional (using (:[]) integerTypeSuffix) "")
+decimalIntegerLiteral = fmap read decimalNumeral <* optional integerTypeSuffix
 
 
 integerLiteral :: Parser Char Integer
@@ -150,45 +215,40 @@ integerLiteral = decimalIntegerLiteral
 
 
 jliteral :: Parser Char Literal
-jliteral = pany [using LInteger integerLiteral, 
-                 using LFloat floatingPointLiteral, 
-                 using LBool booleanLiteral, 
-                 using LChar characterLiteral, 
-                 using LString stringLiteral, 
-                 using (const LNull) nullLiteral]
+jliteral = mconcat [fmap LInteger integerLiteral, 
+                    fmap LFloat floatingPointLiteral, 
+                    fmap LBool booleanLiteral, 
+                    fmap LChar characterLiteral, 
+                    fmap LString stringLiteral, 
+                    fmap (const LNull) nullLiteral]
   
   
 token :: Parser Char Token
-token = pany [using Identifier identifier, 
-              using Keyword keyword, 
-              using Literal jliteral, 
-              using Separator separator, 
-              using (const $ Operator No) operator]
-
-
--- I believe this is end of input
-sub :: Parser Char ()
-sub "" = succeed () ""
-sub _ = fail "could not match end of input"
+token = mconcat [fmap Identifier identifier, 
+                 fmap Keyword keyword, 
+                 fmap Literal jliteral, 
+                 fmap Separator separator, 
+                 fmap Operator operator]
 
 
 whitespace :: Parser Char String
-whitespace = pany [lineTerminator, string " ", string "\t"] -- what about 'form feed'?  wikipedia says it's '\f'
+whitespace = mconcat [lineTerminator, string " ", string "\t"] -- what about 'form feed'?  wikipedia says it's '\f'
 
 
 -- hmm, should the line terminator parser go here or not?
 comment :: Parser Char String
-comment = ignoreLeft (string "//") (many inputCharacter)
+comment = string "//" *> many inputCharacter
 
   
 inputElement :: Parser Char InputElement
-inputElement = pany [using (Whitespace . concat) $ some whitespace,
-                     using Comment comment,
-                     using Token token]
+inputElement = mconcat [fmap (Whitespace . concat) $ some whitespace, -- this is weird ... ???
+                        fmap Comment comment,
+                        fmap Token token]
 
 
 scanner :: Parser Char [InputElement]
 scanner = many inputElement
 
 
-  
+{-
+  -}

@@ -1,3 +1,4 @@
+import MParse (getParser)
 import Java
 import System.IO
 
@@ -8,7 +9,7 @@ myReadFile path =
   
   
 -- test :: IO (Parser Strin
-test = myReadFile "ex2.java" >>= (return . scanner)
+test = myReadFile "java/ex2.java" >>= (return . getParser scanner)
 
 
 
