@@ -248,7 +248,3 @@ inputElement = mconcat [fmap (Whitespace . concat) $ some whitespace, -- this is
 
 scanner :: Parser Char [InputElement]
 scanner = many inputElement
-
-
-{-
-  -}
