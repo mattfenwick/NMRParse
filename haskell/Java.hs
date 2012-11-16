@@ -221,23 +221,60 @@ jliteral = mconcat [fmap LInteger integerLiteral,
                     fmap LChar characterLiteral, 
                     fmap LString stringLiteral, 
                     fmap (const LNull) nullLiteral]
-  
+
+
+atSign :: Parser Char Char
+atSign = literal '@'
+
   
 token :: Parser Char Token
 token = mconcat [fmap Identifier identifier, 
                  fmap Keyword keyword, 
                  fmap Literal jliteral, 
                  fmap Separator separator, 
-                 fmap Operator operator]
+                 fmap Operator operator,
+                 fmap (const AtSign) atSign]
 
 
 whitespace :: Parser Char String
 whitespace = mconcat [lineTerminator, string " ", string "\t"] -- what about 'form feed'?  wikipedia says it's '\f'
 
 
+charactersInLine :: Parser Char String
+charactersInLine = some inputCharacter
+
+
+notStarNotSlash :: Parser Char Char
+notStarNotSlash = check (\x -> not $ elem x "*/") inputCharacter <|> fmap (const '\n') lineTerminator
+-- TODO:  um, ^ converted all newlines to '\n' just to get the types right
+
+
+notStar :: Parser Char Char
+notStar = check (/= '*') inputCharacter <|> fmap (const '\n') lineTerminator
+
+
+commentTailStar :: Parser Char String
+commentTailStar = string "/" <|> two <|> three
+  where
+    two = fmap (:) (literal '*') <*> commentTailStar
+    three = fmap (:) notStar <*> commentTail
+
+
+commentTail :: Parser Char String
+commentTail = (fmap (:) (literal '*') <*> commentTailStar) <|> (fmap (:) notStar <*> commentTail)
+
+
 -- hmm, should the line terminator parser go here or not?
+endOfLineComment :: Parser Char String
+endOfLineComment = string "//" *> many inputCharacter
+
+
+traditionalComment :: Parser Char String
+traditionalComment = string "/*" *> commentTail
+
+
 comment :: Parser Char String
-comment = string "//" *> many inputCharacter
+comment = traditionalComment <|> endOfLineComment
 
   
 inputElement :: Parser Char InputElement

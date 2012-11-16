@@ -142,6 +142,7 @@ data Token
   | Literal Literal
   | Separator Separator
   | Operator Operator
+  | AtSign
   deriving (Show, Eq)
 
 
