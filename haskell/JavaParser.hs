@@ -15,6 +15,8 @@ import JavaTokens
 -- the 'real', fancy parsers
 -- they'll be working on [Token]
 
+
+
 -- Section 1: identifiers
 
 identifier :: Parser Token Token
@@ -30,6 +32,12 @@ qualifiedIdentifier = fmap fst $ sepBy1 identifier (literal (Separator Period))
 
 qualifiedIdentifierList :: Parser Token [Token]
 qualifiedIdentifierList = fmap fst $ sepBy1 identifier (literal (Separator Comma))
+
+
+
+-- Section 2:  
+
+
 
 
 -- Section 3:  types
@@ -114,21 +122,64 @@ nonWildcardTypeArgumentsOrDiamond = diamond <|> nonWildcardTypeArguments
 
 
 -- Section 5:
-{-
-modifier :: Parser Token Token
-modifier = annotation <|> others
+
+elementValues :: Parser Token [Token]
+elementValues = fmap (concat . fst) $ sepBy1 elementValue (sep Comma)
+
+
+{- this is very strange;  here are some examples:
+		@SuppressWarnings({ })
+		ArrayList q1 = new ArrayList();
+		@SuppressWarnings({ ,})
+		ArrayList q2 = new ArrayList();
+		@SuppressWarnings(value = { })
+		ArrayList q3 = new ArrayList();
+		@SuppressWarnings(value = {, })
+		ArrayList q4 = new ArrayList();
+		@SuppressWarnings(value = {"unchecked", })
+		ArrayList q5 = new ArrayList();
+		@SuppressWarnings(value = {"unused", "rawtypes",})
+		ArrayList q6 = new ArrayList();
+-}
+elementValueArrayInitializer :: Parser Token [Token]
+elementValueArrayInitializer = sep OpenSquare *> main <* optional (sep Comma) <* sep CloseSquare
   where
-    others = mconcat $ map key [Kpublic, Kprotected, Kprivate, Kstatic, Kabstract, Kfinal, Knative, Ksynchronized, Ktransient, Kvolatile, Kstrictfp]
+    main = fmap (concat . fst) $ sepBy0 elementValue (sep Comma)
 
 
-annotations :: Parser Token [Token]
-annotations = some annotation
+elementValue :: Parser Token [Token]
+elementValue = annotation <|> elementValueArrayInitializer
+-- oops, don't have 'expression1' yet
+ -- annotation <|> expression1 <|> elementValueArrayInitializer
+ 
+ 
+elementValuePair :: Parser Token [Token]
+elementValuePair = fmap (\x _ y -> x:y) identifier <*> op Equals <*> elementValue
+
+
+elementValuePairs :: Parser Token [Token]
+elementValuePairs = fmap (concat . fst) $ sepBy1 elementValuePair (sep Comma)
+
+
+annotationElement :: Parser Token [Token]
+annotationElement = elementValuePairs <|> elementValue
 
 
 annotation :: Parser Token [Token]
-annotation 
+annotation = fmap (\_ xs ys -> xs ++ ys) (literal AtSign) <*> qualifiedIdentifier <*> rest
+  where
+    rest = opt [] (sep OpenParen *> opt [] annotationElement <* sep CloseParen)
 
--}
+
+annotations :: Parser Token [Token]
+annotations = fmap concat $ some annotation
+
+
+modifier :: Parser Token [Token]
+modifier = annotation <|> fmap (:[]) others
+  where
+    others = mconcat $ map key [Kpublic, Kprotected, Kprivate, Kstatic, Kabstract, Kfinal, Knative, Ksynchronized, Ktransient, Kvolatile, Kstrictfp]
+
 
 
 -- 
