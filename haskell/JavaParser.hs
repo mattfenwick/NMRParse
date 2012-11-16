@@ -35,8 +35,71 @@ qualifiedIdentifierList = fmap fst $ sepBy1 identifier (literal (Separator Comma
 
 
 
--- Section 2:  
+-- Section 2:  imports, declarations
 
+
+extsClause :: Parser Token [Token]
+extsClause = opt [] $ fmap (:) (key Kextends) <*> typeList
+
+
+impsClause :: Parser Token [Token]
+impsClause = opt [] $ fmap (:) (key Kextends) <*> typeList
+
+
+annotationTypeDeclaration :: Parser Token [Token]
+annotationTypeDeclaration = fmap (:) (literal AtSign *> key Kinterface *> identifier) <*> annotationTypeBody
+
+
+annotationTypeBody = error "TODO!"
+
+
+normalInterfaceDeclaration :: Parser Token [Token]
+normalInterfaceDeclaration = fmap f (key Kinterface) <*> identifier <*> opt [] typeParameters <*> extsClause <*> interfaceBody
+  where
+    f _ i ps es b = i : concat [ps,es,b]
+
+
+interfaceBody = error "TODO"
+
+
+enumDeclaration :: Parser Token [Token]
+enumDeclaration = fmap (\_ x y z -> x : (y ++ z)) (key Kenum) <*> identifier <*> impsClause <*> enumBody
+
+
+enumBody = error "TODO"
+
+
+normalClassDeclaration :: Parser Token [Token]
+normalClassDeclaration = fmap f (key Kclass) <*> identifier <*> opt [] typeParameters <*> extsClause <*> impsClause <*> classBody
+  where
+    f _ i ts es is b = i : concat [ts, es, is, b]
+
+
+classBody = error "TODO"
+
+
+interfaceDeclaration :: Parser Token [Token]
+interfaceDeclaration = normalInterfaceDeclaration <|> annotationTypeDeclaration
+
+
+classDeclaration :: Parser Token [Token]
+classDeclaration = normalClassDeclaration <|> enumDeclaration
+
+
+classOrInterfaceDeclaration :: Parser Token [Token]
+classOrInterfaceDeclaration = fmap (\x y -> concat x ++ y) (many modifier) <*> (classDeclaration <|> interfaceDeclaration)
+
+
+typeDeclaration :: Parser Token [Token]
+typeDeclaration = classOrInterfaceDeclaration <|> fmap (:[]) (sep Semicolon)
+
+
+importDeclaration :: Parser Token [Token]
+importDeclaration = fmap f (key Kimport) <*> stat <*> fmap fst (sepBy1 identifier (sep Period)) <*> star <*> sep Semicolon
+  where
+    f _ s is st _ = s ++ is ++ st
+    stat = opt [] (fmap (:[]) $ key Kstatic)
+    star = opt [] (fmap (:[]) $ op Times)
 
 
 
@@ -148,10 +211,11 @@ elementValueArrayInitializer = sep OpenSquare *> main <* optional (sep Comma) <*
 
 
 elementValue :: Parser Token [Token]
-elementValue = annotation <|> elementValueArrayInitializer
--- oops, don't have 'expression1' yet
- -- annotation <|> expression1 <|> elementValueArrayInitializer
- 
+elementValue = annotation <|> expression1 <|> elementValueArrayInitializer
+
+
+expression1 = error "TODO"
+
  
 elementValuePair :: Parser Token [Token]
 elementValuePair = fmap (\x _ y -> x:y) identifier <*> op Equals <*> elementValue
@@ -182,13 +246,40 @@ modifier = annotation <|> fmap (:[]) others
 
 
 
--- 
+-- Section 6: classes
+{-
+genericMethodOrConstructorRest :: Parser Token [Token]
+genericMethodOrConstructorRest = first <|> second
+  where
+    first = fmap (\x y z -> x:y:z) (jtype <|> key Kvoid) <*> identifier <*> methodDeclaratorRest
+    second = fmap (:) identifer <*> constructorDeclaratorRest
+
+
+genericMethodOrConstructorDecl :: Parser Token [Token]
+genericMethodOrConstructorDecl = fmap (++) typeParameters <*> genericMethodOrConstructorRest
+
+
+constructorDeclaratorRest :: Parser Token [Token]
+constructorDeclaratorRest =
+
+
+voidMethodDeclaratorRest :: Parser Token [Token]
+voidMethodDeclaratorRest
+
+
+methodDeclaratorRest :: Parser Token [Token]
+methodDeclaratorRest
+
+
+classBody :: Parser Token [Token]
+classBody = sep OpenCurly *> classBodyDeclaration <* sep CloseCurly
+-}
 
 
 
 
 
-
+-- Section 7:
 
 
 {-
