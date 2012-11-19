@@ -8,6 +8,7 @@ import Classes
 import Instances
 import Prelude hiding (fmap, (>>=), (>>), fail, foldr, foldl)
 import JavaTokens
+import JavaAst
 
 
 
@@ -16,94 +17,9 @@ import JavaTokens
 -- they'll be working on [Token]
 
 
+sepBy1Fst :: Parser t a -> Parser t b -> Parser t [a]
+sepBy1Fst p = fmap fst . sepBy1 p
 
--- Section 1: identifiers
-
-identifier :: Parser Token Token
-identifier = satisfy isIdent
-  where
-    isIdent (Identifier _)   =  True
-    isIdent   _              =  False
-
-
-qualifiedIdentifier :: Parser Token [Token] 
-qualifiedIdentifier = fmap fst $ sepBy1 identifier (literal (Separator Period)) 
-
-
-qualifiedIdentifierList :: Parser Token [Token]
-qualifiedIdentifierList = fmap fst $ sepBy1 identifier (literal (Separator Comma))
-
-
-
--- Section 2:  imports, declarations
-
-
-extsClause :: Parser Token [Token]
-extsClause = opt [] $ fmap (:) (key Kextends) <*> typeList
-
-
-impsClause :: Parser Token [Token]
-impsClause = opt [] $ fmap (:) (key Kextends) <*> typeList
-
-
-annotationTypeDeclaration :: Parser Token [Token]
-annotationTypeDeclaration = fmap (:) (literal AtSign *> key Kinterface *> identifier) <*> annotationTypeBody
-
-
-annotationTypeBody = error "TODO!"
-
-
-normalInterfaceDeclaration :: Parser Token [Token]
-normalInterfaceDeclaration = fmap f (key Kinterface) <*> identifier <*> opt [] typeParameters <*> extsClause <*> interfaceBody
-  where
-    f _ i ps es b = i : concat [ps,es,b]
-
-
-interfaceBody = error "TODO"
-
-
-enumDeclaration :: Parser Token [Token]
-enumDeclaration = fmap (\_ x y z -> x : (y ++ z)) (key Kenum) <*> identifier <*> impsClause <*> enumBody
-
-
-enumBody = error "TODO"
-
-
-normalClassDeclaration :: Parser Token [Token]
-normalClassDeclaration = fmap f (key Kclass) <*> identifier <*> opt [] typeParameters <*> extsClause <*> impsClause <*> classBody
-  where
-    f _ i ts es is b = i : concat [ts, es, is, b]
-
-
-classBody = error "TODO"
-
-
-interfaceDeclaration :: Parser Token [Token]
-interfaceDeclaration = normalInterfaceDeclaration <|> annotationTypeDeclaration
-
-
-classDeclaration :: Parser Token [Token]
-classDeclaration = normalClassDeclaration <|> enumDeclaration
-
-
-classOrInterfaceDeclaration :: Parser Token [Token]
-classOrInterfaceDeclaration = fmap (\x y -> concat x ++ y) (many modifier) <*> (classDeclaration <|> interfaceDeclaration)
-
-
-typeDeclaration :: Parser Token [Token]
-typeDeclaration = classOrInterfaceDeclaration <|> fmap (:[]) (sep Semicolon)
-
-
-importDeclaration :: Parser Token [Token]
-importDeclaration = fmap f (key Kimport) <*> stat <*> fmap fst (sepBy1 identifier (sep Period)) <*> star <*> sep Semicolon
-  where
-    f _ s is st _ = s ++ is ++ st
-    stat = opt [] (fmap (:[]) $ key Kstatic)
-    star = opt [] (fmap (:[]) $ op Times)
-
-
-
--- Section 3:  types
 
 opt :: a -> Parser t a -> Parser t a
 opt x p = p <|> pure x
@@ -121,73 +37,270 @@ op :: Operator -> Parser Token Token
 op = literal . Operator
 
 
-basicType :: Parser Token Token
-basicType = mconcat $ map key [Kbyte, Kshort, Kchar, Kint, Klong, Kfloat, Kdouble, Kboolean]
+
+-- Section 1: identifiers
+
+identifier :: Parser Token ASTNode
+identifier = 
+    getOne >>= \t -> case t of
+                     (Identifier i) -> pure (AIdent i)
+                     _              -> empty
 
 
-typeArgument :: Parser Token [Token]
-typeArgument = referenceType <|> (fmap (:) (op LessThan) <*> opt [] rest)
+qualifiedIdentifier :: Parser Token ASTNode
+qualifiedIdentifier = 
+    pure AQIdent <*>
+    sepBy1Fst identifier (sep Period)
+
+
+qualifiedIdentifierList :: Parser Token ASTNode
+qualifiedIdentifierList = 
+    pure AQIdentList <*>
+    sepBy1Fst qualifiedIdentifier (sep Comma)
+
+
+
+-- Section 2:  imports, declarations
+
+-- TODO: can this parse a typelist of zero
+-- types ... or are there some delimiters
+-- to watch out for?
+extsClause :: Parser Token [ASTNode]
+extsClause = 
+    key Kextends  *>
+    typeList
+
+
+impsClause :: Parser Token [ASTNode]
+impsClause = 
+    key Kimplements  *> 
+    typeList
+
+
+annotationTypeDeclaration :: Parser Token ASTNode
+annotationTypeDeclaration = 
+    pure AAnnoDecl    <*>
+    (literal AtSign    *>
+     key Kinterface    *>
+     identifier)      <*>
+     annotationTypeBody
+
+
+annotationTypeBody = error "TODO!"
+
+
+normalInterfaceDeclaration :: Parser Token ASTNode
+normalInterfaceDeclaration =
+    pure AIntfDecl          <*>
+    (key Kinterface          *> 
+     identifier)            <*>
+     opt [] typeParameters  <*>
+     opt [] extsClause      <*>
+     interfaceBody
+
+
+interfaceBody = error "TODO"
+
+
+enumDeclaration :: Parser Token ASTNode
+enumDeclaration = 
+    pure AEnumDecl      <*>
+    (key Kenum           *>
+     identifier)        <*>
+     opt [] impsClause  <*>
+     enumBody
+
+
+enumBody = error "TODO"
+
+
+normalClassDeclaration :: Parser Token ASTNode
+normalClassDeclaration = 
+    pure AClassDecl         <*>
+    (key Kclass              *> 
+     identifier)            <*>
+     opt [] typeParameters  <*>
+     extendsOpt             <*> 
+     opt [] impsClause      <*>
+     classBody
   where
-    rest = fmap (:) (key Kextends <|> key Ksuper) <*> referenceType
+    extendsOpt = optional (key Kextends *> jtype)
 
 
-typeArguments :: Parser Token [Token]
-typeArguments = op LessThan *> fmap (concat . fst) (sepBy1 typeArgument (sep Comma)) <* op GreaterThan
+classBody = error "TODO"
 
 
-referenceType :: Parser Token [Token]
-referenceType = fmap (concat . fst) $ sepBy1 main (sep Period)
+interfaceDeclaration :: Parser Token ASTNode
+interfaceDeclaration = 
+    normalInterfaceDeclaration    <|>
+    annotationTypeDeclaration
+
+
+classDeclaration :: Parser Token ASTNode
+classDeclaration = 
+    normalClassDeclaration    <|> 
+    enumDeclaration
+
+
+classOrInterfaceDeclaration :: Parser Token ASTNode
+classOrInterfaceDeclaration = 
+    pure ACOrIDecl         <*> 
+    many modifier          <*> 
+    (classDeclaration <|> interfaceDeclaration)
+
+
+-- I think the empty ; rule is just to allow lots of
+-- trailing semicolons ... it can probably be stuck
+-- on to compilationUnit instead
+typeDeclaration :: Parser Token ASTNode
+typeDeclaration = 
+    classOrInterfaceDeclaration         <|> 
+    fmap message (sep Semicolon)
   where
-    main = fmap (:) identifier <*> opt [] typeArguments
+    message = (const $ error "why is this in the Java grammar?")
 
 
-jtype :: Parser Token [Token]
-jtype = fmap (++) ( fmap (:[]) basicType <|> referenceType) <*> opt [] array
+importDeclaration :: Parser Token ASTNode
+importDeclaration = 
+    pure AImport                        <*>
+    (key Kimport                         *>
+     optional (key Kstatic)             <*>
+     sepBy1Fst identifier (sep Period)  <*>
+     optional (op Times)                <*
+     sep Semicolon)
+
+
+packageDecl :: Parser Token ASTNode
+packageDecl = 
+    pure APackDecl             <*>
+    (many annotation           <*>
+     (key Kpackage              *>
+      qualifiedIdentifier      <*
+      sep Semicolon))
+
+
+compilationUnit :: Parser Token ASTNode
+compilationUnit = 
+    pure ACompUnit            <*>
+    (optional packageDecl     <*>
+     many importDeclaration   <*>
+     many typeDeclaration)
+    
+
+
+
+-- Section 3:  types
+
+
+basicType :: Parser Token ASTNode
+basicType = mconcat $ map key2 [Kbyte, Kshort, Kchar, Kint, Klong, Kfloat, Kdouble, Kboolean]
   where
-    array = fmap (\x y -> [x,y]) (sep OpenSquare) <*> sep CloseSquare
+    key2 k = 
+        literal (Keyword k)            *> 
+        pure (ABType $ tail $ show k)
+
+
+typeArgument :: Parser Token ASTNode
+typeArgument = 
+    referenceType  <|>
+    q              <|>
+    bounded
+  where
+    q = op QuestionMark
+    bounded = 
+        pure ATypeArg                   <*>
+        (q                               *> 
+         (key Kextends <|> key Ksuper)  <*>
+         referenceType)
+
+
+typeArguments :: Parser Token [ASTNode]
+typeArguments =
+    op LessThan                          *> 
+    sepBy1Fst typeArgument (sep Comma)  <* 
+    op GreaterThan
+
+
+referenceType :: Parser Token ASTNode
+referenceType =
+    pure ARefType     <*>
+    sepBy1Fst paramType (sep Period)
+  where
+    paramType = 
+        pure AParamType       <*>
+        identifier            <*> 
+        opt [] typeArguments
+
+
+jtype :: Parser Token ASTNode
+jtype =
+    pure AType                     <*>
+    (basicType <|> referenceType)  <*>
+    array
+  where
+    array = optional (key OpenSquare *> key CloseSquare)
 
 
 -- Section 4: generics
 
-bound :: Parser Token [Token]
-bound = fmap (concat . fst) $ sepBy1 referenceType (op And)
+bound :: Parser Token ASTNode
+bound = 
+    pure ABound     <*>
+    sepBy1Fst referenceType (op And)
 
 
-typeParameter :: Parser Token [Token]
-typeParameter = fmap (\x y z -> x:y:z) identifier <*> key Kextends <*> bound
+typeParameter :: Parser Token ASTNode
+typeParameter = 
+    pure ATypeParam   <*>
+    identifier        <*> 
+    (key Kextends      *> 
+     bound)
 
 
-typeParameters :: Parser Token [Token]
-typeParameters = op LessThan *> main <* op GreaterThan
-  where
-    main = fmap (concat . fst) $ sepBy1 typeParameter (sep Comma)
+typeParameters :: Parser Token [ASTNode]
+typeParameters = 
+    op LessThan                           *> 
+    sepBy1Fst typeParameter (sep Comma)   <* 
+    op GreaterThan
 
 
-nonWildcardTypeArguments :: Parser Token [Token]
-nonWildcardTypeArguments = op LessThan *> typeList <* op GreaterThan
+nonWildcardTypeArguments :: Parser Token ASTNode
+nonWildcardTypeArguments = 
+    pure ANWTArgs  <*>
+    (op LessThan    *> 
+     typeList      <* 
+     op GreaterThan)
 
 
-typeList :: Parser Token [Token]
-typeList = fmap (concat . fst) $ sepBy1 referenceType (sep Comma)
+typeList :: Parser Token [ASTNode]
+typeList = sepBy1Fst referenceType (sep Comma)
 
 
-diamond :: Parser Token [Token]
-diamond = pure [] <* op LessThan <* op GreaterThan
+diamond :: Parser Token ()
+diamond = 
+    pure ()         <* 
+    op LessThan     <* 
+    op GreaterThan
 
 
-typeArgumentsOrDiamond :: Parser Token [Token]
-typeArgumentsOrDiamond = diamond <|> typeArguments
+typeArgumentsOrDiamond :: Parser Token ASTNode
+typeArgumentsOrDiamond = 
+    (diamond *> pure [])       <|> 
+    typeArguments
 
 
-nonWildcardTypeArgumentsOrDiamond :: Parser Token [Token]
-nonWildcardTypeArgumentsOrDiamond = diamond <|> nonWildcardTypeArguments
+nonWildcardTypeArgumentsOrDiamond :: Parser Token ASTNode
+nonWildcardTypeArgumentsOrDiamond = 
+    (diamond *> pure [])       <|> 
+    nonWildcardTypeArguments
+
 
 
 
 -- Section 5:
 
-elementValues :: Parser Token [Token]
-elementValues = fmap (concat . fst) $ sepBy1 elementValue (sep Comma)
+elementValues :: Parser Token [ASTNode]
+elementValues = sepBy1Fst elementValue (sep Comma)
 
 
 {- this is very strange;  here are some examples:
@@ -204,47 +317,63 @@ elementValues = fmap (concat . fst) $ sepBy1 elementValue (sep Comma)
 		@SuppressWarnings(value = {"unused", "rawtypes",})
 		ArrayList q6 = new ArrayList();
 -}
-elementValueArrayInitializer :: Parser Token [Token]
-elementValueArrayInitializer = sep OpenSquare *> main <* optional (sep Comma) <* sep CloseSquare
-  where
-    main = fmap (concat . fst) $ sepBy0 elementValue (sep Comma)
+elementValueArrayInitializer :: Parser Token ASTNode
+elementValueArrayInitializer = 
+    pure AArrayInit          <*>
+    (sep OpenCurly            *> 
+     opt [] elementValues    <* 
+     optional (sep Comma)    <* 
+     sep CloseCurly)
 
 
-elementValue :: Parser Token [Token]
+elementValue :: Parser Token ASTNode
 elementValue = annotation <|> expression1 <|> elementValueArrayInitializer
 
 
 expression1 = error "TODO"
 
- 
-elementValuePair :: Parser Token [Token]
-elementValuePair = fmap (\x _ y -> x:y) identifier <*> op Equals <*> elementValue
+
+elementValuePair :: Parser Token ASTNode
+elementValuePair = 
+    pure APair      <*>
+    identifier      <*> 
+    (op Equals       *> 
+     elementValue)
 
 
-elementValuePairs :: Parser Token [Token]
-elementValuePairs = fmap (concat . fst) $ sepBy1 elementValuePair (sep Comma)
+elementValuePairs :: Parser Token [ASTNode]
+elementValuePairs = sepBy1Fst elementValuePair (sep Comma)
 
 
-annotationElement :: Parser Token [Token]
-annotationElement = elementValuePairs <|> elementValue
+annotationElement :: Parser Token ASTNode
+annotationElement = 
+    elementValuePairs   <|> 
+    elementValue
 
 
 annotation :: Parser Token [Token]
-annotation = fmap (\_ xs ys -> xs ++ ys) (literal AtSign) <*> qualifiedIdentifier <*> rest
+annotation = 
+    pure AAnno      <*>
+    (literal AtSign *> 
+     qualifiedIdentifier <*> 
+     fmap join rest)
   where
-    rest = opt [] (sep OpenParen *> opt [] annotationElement <* sep CloseParen)
+    rest = optional (sep OpenParen                *> 
+                     optional annotationElement  <* 
+                     sep CloseParen)
 
 
 annotations :: Parser Token [Token]
 annotations = fmap concat $ some annotation
 
 
-modifier :: Parser Token [Token]
-modifier = annotation <|> fmap (:[]) others
+modifier :: Parser Token ASTNode
+modifier = annotation <|> others
   where
     others = mconcat $ map key [Kpublic, Kprotected, Kprivate, Kstatic, Kabstract, Kfinal, Knative, Ksynchronized, Ktransient, Kvolatile, Kstrictfp]
 
 
+{-
 
 -- Section 6: classes
 {-
@@ -314,5 +443,6 @@ ptype = alt primitiveType referenceType
 leftHandSide :: Parser Token [Token]
 leftHandSide = pany [expressionName, fieldAccess, arrayAccess]
 
+-}
 -}
 -}
