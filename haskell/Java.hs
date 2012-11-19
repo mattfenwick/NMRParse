@@ -174,23 +174,40 @@ exponentPart :: Parser Char String
 exponentPart = fmap (:) exponentIndicator <*> signedInteger
 
 
-optReturn :: a -> Parser t (Maybe a) -> Parser t a
-optReturn x = fmap f
-  where
-    f Nothing   =  x
-    f (Just y)  =  y
+opt :: a -> Parser t a -> Parser t a
+opt x p = p <|> pure x
 
 
--- TOTALLY F-ED UP !!!  PLEASE IMPROVE
 -- the read function can *FAIL* !!!!!
+-- note that we're throwing away the literal type (float vs. double)
 decimalFloatingPointLiteral :: Parser Char Double
 decimalFloatingPointLiteral = fmap (read . concat) $ mconcat [f1, f2, f3, f4]
-  where f1 = commute [some digit,  string ".",    many digit,   optExp,       optSuffix]
-        f2 = commute [string ".",  some digit,    optExp,       optSuffix]
-        f3 = commute [some digit,  exponentPart,  optSuffix]
-        f4 = commute [some digit,  optExp,        fmap (:[]) floatTypeSuffix]
-        optSuffix = optReturn "" (optional $ fmap (:[]) floatTypeSuffix)
-        optExp = optReturn "" (optional exponentPart)
+  where 
+    optExp = opt "" exponentPart
+    optSuffix = optional floatTypeSuffix
+    f1 = 
+        some digit  >>= \ds ->
+        literal '.' >> 
+        many digit  >>= \ds' ->
+        optExp      >>= \e -> 
+        optSuffix   >>
+        pure [ds, ".", ds', e]
+    f2 = 
+        literal '.' >>
+        some digit  >>= \ds' -> 
+        optExp      >>= \e ->
+        optSuffix   >>
+        pure [".", ds', e]
+    f3 = 
+        some digit   >>= \ds ->
+        exponentPart >>= \e -> 
+        optSuffix    >>
+        pure [ds, e]
+    f4 =
+        some digit      >>= \ds ->
+        optExp          >>= \e ->
+        floatTypeSuffix >> 
+        pure [ds, e]
         
         
 floatingPointLiteral :: Parser Char Double
@@ -226,10 +243,12 @@ jliteral = mconcat [fmap LInteger integerLiteral,
 atSign :: Parser Char Char
 atSign = literal '@'
 
-  
+
+-- give Keyword first crack *before* identifier, otherwise, 'double' would
+-- be tokenized as an identifier ... which would be wrong
 token :: Parser Char Token
-token = mconcat [fmap Identifier identifier, 
-                 fmap Keyword keyword, 
+token = mconcat [fmap Keyword keyword,
+                 fmap Identifier identifier, 
                  fmap Literal jliteral, 
                  fmap Separator separator, 
                  fmap Operator operator,
