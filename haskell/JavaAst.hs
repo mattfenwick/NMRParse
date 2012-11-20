@@ -169,6 +169,18 @@ data ASTNode =
 
 
 
+-- ---- Section 8
+
+    -- formal parameter
+    --   variable modifiers, type, identifier
+    | AFParam [ASTNode] ASTNode ASTNode
+    
+    -- formal parameters
+    --   normal parameters, optional var-args parameter
+    | AFParams [ASTNode] (Maybe ASTNode)
+
+
+
 -- ---- Section ??
 
     -- block

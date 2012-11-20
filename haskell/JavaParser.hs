@@ -371,7 +371,9 @@ annotations = some annotation
 modifier :: Parser Token ASTNode
 modifier = annotation <|> others
   where
-    others = mconcat $ map q [Kpublic, Kprotected, Kprivate, Kstatic, Kabstract, Kfinal, Knative, Ksynchronized, Ktransient, Kvolatile, Kstrictfp]
+    others = mconcat $ map q [Kpublic, Kprotected, Kprivate, Kstatic,  
+                              Kabstract, Kfinal, Knative, Ksynchronized,  
+                              Ktransient, Kvolatile, Kstrictfp]
     q k = key k *> pure (AModifier (tail $ show k))
 
 
@@ -475,8 +477,6 @@ classBody =
 
 
 
-formalParameters = error "TODO"
-
 block = error "TODO"
 
 variableInitializer = error "TODO"
@@ -554,6 +554,46 @@ interfaceBody =
   where
     decl = interfaceBodyDeclaration <|> emptyThing
     
+
+
+-- Section 8
+
+variableModifier :: Parser Token ASTNode
+variableModifier =
+    final        <|>
+    annotation
+  where
+    final = key Kfinal *> pure (AModifier "final")
+
+
+formalParamDecl :: Parser Token ASTNode
+formalParamDecl =
+    many variableModifier       >>= \mds ->
+    jtype                       >>= \(AType t n) ->
+    identifier                  >>= \i ->
+    (fmap length $ many array)  >>= \n' ->
+    pure (AFParam mds (AType t (n + n')) i)
+
+
+varArg :: Parser Token ASTNode
+varArg =
+    many variableModifier     >>= \mds ->
+    jtype                     >>= \t ->
+    literal Ellipsis          >>
+    identifier                >>= \i ->
+    pure (AFParam mds t i)
+
+
+formalParameters :: Parser Token ASTNode
+formalParameters =
+    sep OpenParen    >>
+    params           >>= \ps ->
+    optional varArg  >>= \va ->
+    sep CloseParen   >>
+    pure (AFParams ps va)
+  where
+    params = fmap fst $ sepBy0 formalParamDecl (sep Comma)
+
 
 
 -- Section ??
