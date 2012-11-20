@@ -53,9 +53,8 @@ qualifiedIdentifier =
     sepBy1Fst identifier (sep Period)
 
 
-qualifiedIdentifierList :: Parser Token ASTNode
+qualifiedIdentifierList :: Parser Token [ASTNode]
 qualifiedIdentifierList = 
-    pure AQIdentList <*>
     sepBy1Fst qualifiedIdentifier (sep Comma)
 
 
@@ -127,9 +126,6 @@ normalClassDeclaration =
     extendsOpt = optional (key Kextends *> jtype)
 
 
-classBody = error "TODO"
-
-
 interfaceDeclaration :: Parser Token ASTNode
 interfaceDeclaration = 
     normalInterfaceDeclaration    <|>
@@ -149,15 +145,19 @@ classOrInterfaceDeclaration =
     (classDeclaration <|> interfaceDeclaration)
 
 
+emptyThing :: Parser Token ASTNode
+emptyThing = 
+    sep Semicolon *> 
+    pure AEmpty
+
+
 -- I think the empty ; rule is just to allow lots of
 -- trailing semicolons ... it can probably be stuck
 -- on to compilationUnit instead
 typeDeclaration :: Parser Token ASTNode
 typeDeclaration = 
     classOrInterfaceDeclaration         <|> 
-    fmap message (sep Semicolon)
-  where
-    message = (const $ error "why is this in the Java grammar?")
+    emptyThing
 
 
 importDeclaration :: Parser Token ASTNode
@@ -232,13 +232,18 @@ referenceType =
         opt [] typeArguments
 
 
+array :: Parser Token ()
+array = 
+    sep OpenSquare   *> 
+    sep CloseSquare  *>
+    pure ()
+
+
 jtype :: Parser Token ASTNode
 jtype =
     pure AType                     <*>
     (basicType <|> referenceType)  <*>
-    opt False (array *> pure True)
-  where
-    array = sep OpenSquare *> sep CloseSquare
+    (fmap length $ many array)
 
 
 -- Section 4: generics
@@ -260,7 +265,7 @@ typeParameter =
 typeParameters :: Parser Token [ASTNode]
 typeParameters = 
     op LessThan                           *> 
-    sepBy1Fst typeParameter (sep Comma)   <* 
+    sepBy1Fst typeParameter (sep Comma)  <* 
     op GreaterThan
 
 
@@ -373,39 +378,111 @@ modifier = annotation <|> others
     q k = key k *> pure (AModifier (tail $ show k))
 
 
-{-
 
 -- Section 6: classes
-{-
-genericMethodOrConstructorRest :: Parser Token [Token]
-genericMethodOrConstructorRest = first <|> second
+
+
+constructorDeclaration :: Parser Token ASTNode
+constructorDeclaration = 
+    pure AConsDecl          <*>
+    opt [] typeParameters   <*>
+    identifier              <*>
+    formalParameters        <*>
+    opt [] throwsClause     <*>
+    block
+
+
+variableDeclaration :: Parser Token ASTNode
+variableDeclaration =
+    pure AVarDecl                   <*>
+    identifier                      <*>
+    (fmap length $ many array)      <*>
+    optional (op Equals  *>
+              variableInitializer)
+
+
+fieldDeclaration :: Parser Token ASTNode
+fieldDeclaration = 
+    pure AFieldDecl  <*>
+    jtype            <*>
+    vars             <*
+    sep Semicolon
   where
-    first = fmap (\x y z -> x:y:z) (jtype <|> key Kvoid) <*> identifier <*> methodDeclaratorRest
-    second = fmap (:) identifer <*> constructorDeclaratorRest
+    vars = sepBy1Fst variableDeclaration (sep Comma)
 
 
-genericMethodOrConstructorDecl :: Parser Token [Token]
-genericMethodOrConstructorDecl = fmap (++) typeParameters <*> genericMethodOrConstructorRest
+throwsClause :: Parser Token [ASTNode]
+throwsClause = 
+    key Kthrows               *> 
+    qualifiedIdentifierList
 
 
-constructorDeclaratorRest :: Parser Token [Token]
-constructorDeclaratorRest =
+methodDeclaration :: Parser Token ASTNode
+methodDeclaration =
+    opt [] typeParameters       >>= \tps ->
+    jtype                       >>= \t ->
+    identifier                  >>= \i ->
+    formalParameters            >>= \fps ->
+    (fmap length $ many array)  >>= \n ->
+    opt [] throwsClause         >>= \thrs ->
+    (block <|> emptyThing)      >>= \b ->
+    pure (AMethodDecl tps (theType t n) i fps thrs b)
+  where
+    theType (AType a x) n = Just (AType a (x + n))
 
 
-voidMethodDeclaratorRest :: Parser Token [Token]
-voidMethodDeclaratorRest
+voidMethodDeclaration :: Parser Token ASTNode
+voidMethodDeclaration =
+    opt [] typeParameters   >>= \tps ->
+    key Kvoid               >>
+    identifier              >>= \i ->
+    formalParameters        >>= \fps ->
+    opt [] throwsClause     >>= \thrs ->
+    (block <|> emptyThing)  >>= \b ->
+    pure (AMethodDecl tps Nothing i fps thrs b)
 
 
-methodDeclaratorRest :: Parser Token [Token]
-methodDeclaratorRest
+memberDecl :: Parser Token ASTNode
+memberDecl =
+    voidMethodDeclaration  <|>
+    methodDeclaration      <|>
+    fieldDeclaration       <|>
+    classDeclaration       <|>
+    interfaceDeclaration   <|>
+    constructorDeclaration
 
 
-classBody :: Parser Token [Token]
-classBody = sep OpenCurly *> classBodyDeclaration <* sep CloseCurly
--}
+classBodyDeclaration :: Parser Token ASTNode
+classBodyDeclaration =
+    -- TODO:  what about ';' rule ?? it's now in 'classBody'
+    member <|> classBlock
+  where
+    member =
+        pure AMemberDecl <*> 
+        many modifier    <*> 
+        memberDecl
+    classBlock = 
+        pure AClassBlock                      <*>
+        opt False (key Kstatic *> pure True)  <*>
+        block
+
+
+classBody :: Parser Token ASTNode
+classBody = 
+    sep OpenCurly   >> 
+    many decl       >>= \ds -> 
+    sep CloseCurly  >>
+    pure (AClassBody ds)
+  where
+    decl = classBodyDeclaration <|> (sep Semicolon *> pure AEmpty)
 
 
 
+formalParameters = error "TODO"
+
+block = error "TODO"
+
+variableInitializer = error "TODO"
 
 
 -- Section 7:
@@ -443,6 +520,5 @@ ptype = alt primitiveType referenceType
 leftHandSide :: Parser Token [Token]
 leftHandSide = pany [expressionName, fieldAccess, arrayAccess]
 
--}
 -}
 -}

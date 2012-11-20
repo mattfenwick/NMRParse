@@ -16,10 +16,6 @@ data ASTNode =
     --   identifiers
     | AQIdent   [ASTNode] 
 
-    -- qualified identifier list
-    --   qualified identifiers
-    | AQIdentList [ASTNode]        
-
     
 
 -- ---- Section 2
@@ -55,6 +51,9 @@ data ASTNode =
     -- compilation unit
     --   package declaration, imports, types
     | ACompUnit (Maybe ASTNode) [ASTNode] [ASTNode]
+    
+    -- an empty ... something
+    | AEmpty
 
 
 
@@ -73,8 +72,8 @@ data ASTNode =
     | ARefType [ASTNode]
     
     -- a type
-    --   base type, is array
-    | AType ASTNode Bool                             
+    --   base type, # of levels of array nesting
+    | AType ASTNode Int                       
 
     -- parameterized type
     --   identifier, type args
@@ -105,12 +104,58 @@ data ASTNode =
     | APair ASTNode ASTNode
     
     -- annotations
-    --   qualfied identifier, annotation elements
+    --   qualified identifier, annotation elements
     | AAnno ASTNode [ASTNode]
     
     -- keyword modifier
     --   the keyword
     | AModifier String
+
+
+
+-- ---- Section 6
+
+    -- class body
+    --   class body declarations
+    | AClassBody [ASTNode]
+    
+    -- class body declaration
+    --   member declarations or blocks
+    | ACBDecl [ASTNode]
+    
+    -- member declaration
+    --   modifiers, method/field/constructor/class/interface
+    | AMemberDecl [ASTNode] ASTNode
+    
+    -- method declaration
+    --   type parameters, void or type, identifier, parameters, throws, block
+    | AMethodDecl [ASTNode] (Maybe ASTNode) ASTNode [ASTNode] [ASTNode] ASTNode
+    
+    -- field declaration
+    --   type, identifiers + optional assignments
+    | AFieldDecl ASTNode [ASTNode]
+    
+    -- variable declaration
+    --   base type, # array nesting level, optional initialization
+    | AVarDecl ASTNode Int (Maybe ASTNode)
+    
+    -- constructor declaration
+    --   type parameters, identifier, parameters, throws, required block
+    | AConsDecl [ASTNode] ASTNode [ASTNode] [ASTNode] ASTNode
+    
+    -- class body block
+    --   is static, block
+    | AClassBlock Bool ASTNode
+
+
+
+-- ---- Section ??
+
+    -- block
+    --   block statements
+    | ABlock [ASTNode]
+
+
 
 
   deriving (Show, Eq, Ord)
