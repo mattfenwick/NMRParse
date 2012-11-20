@@ -202,18 +202,16 @@ basicType = mconcat $ map key2 [Kbyte, Kshort, Kchar, Kint, Klong, Kfloat, Kdoub
 
 typeArgument :: Parser Token ASTNode
 typeArgument = 
-    referenceType  <|>
-    q              <|>
-    bounded
+    referenceType           <|>
+    fmap ATypeArg bounded
   where
-    q = op QuestionMark *> pure AWildcard
-    bounded = 
-        pure ATypeArg       <*>
-        (q                   *> 
-         extendsOrSuper)    <*>
-         referenceType
+    bounded =
+        op QuestionMark >>
+        optional (pure (,)        <*>
+                  extendsOrSuper  <*>
+                  referenceType)
     extendsOrSuper = 
-        fmap (tail . show) (key Kextends <|> key Ksuper)
+        fmap (tail . show) (key Kextends <|> key Ksuper) -- TODO:  tail . show doesn't work
 
 
 typeArguments :: Parser Token [ASTNode]
