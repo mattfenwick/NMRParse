@@ -178,4 +178,9 @@ class FFT1DAlgorithm {
             return 0;
         }
     }
+	
+	void vars(String ... args) {
+		vars("abc");
+		vars();
+ 	}
 }

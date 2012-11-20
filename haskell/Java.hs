@@ -240,19 +240,27 @@ jliteral = mconcat [fmap LInteger integerLiteral,
                     fmap (const LNull) nullLiteral]
 
 
+-- note:  this was NOT in the spec
 atSign :: Parser Char Char
 atSign = literal '@'
 
 
+-- note: this was NOT in the spec
+ellipsis :: Parser Char String
+ellipsis = string "..."
+
+
 -- give Keyword first crack *before* identifier, otherwise, 'double' would
 -- be tokenized as an identifier ... which would be wrong
+-- also put ellipsis before period
 token :: Parser Char Token
 token = mconcat [fmap Keyword keyword,
                  fmap Identifier identifier, 
-                 fmap Literal jliteral, 
+                 fmap Literal jliteral,
+                 atSign   *> pure AtSign,
+                 ellipsis *> pure Ellipsis, 
                  fmap Separator separator, 
-                 fmap Operator operator,
-                 fmap (const AtSign) atSign]
+                 fmap Operator operator]
 
 
 whitespace :: Parser Char String
