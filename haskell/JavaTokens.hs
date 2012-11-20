@@ -143,6 +143,7 @@ data Token
   | Separator Separator
   | Operator Operator
   | AtSign
+  | Ellipsis
   deriving (Show, Eq)
 
 
