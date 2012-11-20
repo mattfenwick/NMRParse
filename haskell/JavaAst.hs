@@ -119,10 +119,6 @@ data ASTNode =
     --   class body declarations
     | AClassBody [ASTNode]
     
-    -- class body declaration
-    --   member declarations or blocks
-    | ACBDecl [ASTNode]
-    
     -- member declaration
     --   modifiers, method/field/constructor/class/interface
     | AMemberDecl [ASTNode] ASTNode
@@ -136,7 +132,7 @@ data ASTNode =
     | AFieldDecl ASTNode [ASTNode]
     
     -- variable declaration
-    --   base type, # array nesting level, optional initialization
+    --   identifier, # array nesting level, optional initialization
     | AVarDecl ASTNode Int (Maybe ASTNode)
     
     -- constructor declaration
@@ -146,6 +142,30 @@ data ASTNode =
     -- class body block
     --   is static, block
     | AClassBlock Bool ASTNode
+
+
+
+-- ---- Section 7
+
+    -- interface body
+    --   intf. body declarations
+    | AIntfBody [ASTNode]
+    
+    -- intf. member declaration
+    --   modifiers, method/field/class/interface
+    | AIMemberDecl [ASTNode] ASTNode
+    
+    -- intf. method declaration
+    --   type parameters, void or type, identifier, parameters, throws
+    | AIMethodDecl [ASTNode] (Maybe ASTNode) ASTNode [ASTNode] [ASTNode]
+    
+    -- intf. field declaration
+    --   type, identifiers + assignments
+    | AIFieldDecl ASTNode [ASTNode]
+    
+    -- intf. constant declaration
+    --   identifier, # array nesting levels, initialization
+    | AIConstDecl ASTNode Int ASTNode
 
 
 

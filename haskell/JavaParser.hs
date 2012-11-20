@@ -98,9 +98,6 @@ normalInterfaceDeclaration =
      interfaceBody
 
 
-interfaceBody = error "TODO"
-
-
 enumDeclaration :: Parser Token ASTNode
 enumDeclaration = 
     pure AEnumDecl      <*>
@@ -379,7 +376,7 @@ modifier = annotation <|> others
 
 
 
--- Section 6: classes
+-- Section 6: class body
 
 
 constructorDeclaration :: Parser Token ASTNode
@@ -469,12 +466,12 @@ classBodyDeclaration =
 
 classBody :: Parser Token ASTNode
 classBody = 
-    sep OpenCurly   >> 
-    many decl       >>= \ds -> 
-    sep CloseCurly  >>
+    sep OpenCurly        >> 
+    many decl            >>= \ds -> 
+    sep CloseCurly       >>
     pure (AClassBody ds)
   where
-    decl = classBodyDeclaration <|> (sep Semicolon *> pure AEmpty)
+    decl = classBodyDeclaration <|> emptyThing
 
 
 
@@ -485,8 +482,81 @@ block = error "TODO"
 variableInitializer = error "TODO"
 
 
--- Section 7:
 
+-- Section 7:  interface body
+
+constantDeclaration :: Parser Token ASTNode
+constantDeclaration =
+    pure AIConstDecl                <*>
+    identifier                      <*>
+    (fmap length $ many array)      <*>
+    (op Equals  *>
+     variableInitializer)
+
+
+intfFieldDecl :: Parser Token ASTNode
+intfFieldDecl =
+    pure AIFieldDecl  <*>
+    jtype             <*>
+    constants         <*
+    sep Semicolon
+  where
+    constants = sepBy1Fst constantDeclaration (sep Comma)
+
+
+intfMethodDecl :: Parser Token ASTNode
+intfMethodDecl =
+    opt [] typeParameters       >>= \tps ->
+    jtype                       >>= \t ->
+    identifier                  >>= \i ->
+    formalParameters            >>= \fps ->
+    (fmap length $ many array)  >>= \n ->
+    opt [] throwsClause         >>= \thrs ->
+    sep Semicolon               >>
+    pure (AIMethodDecl tps (theType t n) i fps thrs)
+  where
+    theType (AType a x) n = Just (AType a (x + n))
+
+
+intfVoidMethodDecl :: Parser Token ASTNode
+intfVoidMethodDecl =
+    opt [] typeParameters  >>= \tps ->
+    key Kvoid              >>
+    identifier             >>= \i ->
+    formalParameters       >>= \fps ->
+    opt [] throwsClause    >>= \thrs ->
+    sep Semicolon          >>
+    pure (AIMethodDecl tps Nothing i fps thrs)
+
+
+intfMembDecl :: Parser Token ASTNode
+intfMembDecl =
+    intfVoidMethodDecl    <|>
+    intfMethodDecl        <|>
+    intfFieldDecl         <|>
+    classDeclaration      <|>
+    interfaceDeclaration
+
+
+interfaceBodyDeclaration :: Parser Token ASTNode
+interfaceBodyDeclaration =
+    pure AIMemberDecl    <*>
+    many modifier        <*>
+    intfMembDecl
+
+
+interfaceBody :: Parser Token ASTNode
+interfaceBody =
+    sep OpenCurly       >>
+    many decl           >>= \ds ->
+    sep CloseCurly      >>
+    pure (AIntfBody ds)
+  where
+    decl = interfaceBodyDeclaration <|> emptyThing
+    
+
+
+-- Section ??
 
 {-
 classOrInterfaceType :: ???
