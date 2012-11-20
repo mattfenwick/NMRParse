@@ -162,29 +162,29 @@ typeDeclaration =
 
 importDeclaration :: Parser Token ASTNode
 importDeclaration = 
-    pure AImport                        <*>
-    (key Kimport                         *>
-     optional (key Kstatic)             <*>
-     sepBy1Fst identifier (sep Period)  <*>
-     optional (op Times)                <*
-     sep Semicolon)
+    pure AImport                            <*>
+    (key Kimport                             *>
+     opt False (key Kstatic *> pure True))  <*>
+     sepBy1Fst identifier (sep Period)      <*>
+     opt False (op Times *> pure True)      <*
+     sep Semicolon
 
 
 packageDecl :: Parser Token ASTNode
 packageDecl = 
-    pure APackDecl             <*>
-    (many annotation           <*>
-     (key Kpackage              *>
-      qualifiedIdentifier      <*
-      sep Semicolon))
+    pure APackDecl            <*>
+    many annotation           <*>
+    (key Kpackage              *>
+     qualifiedIdentifier      <*
+     sep Semicolon)
 
 
 compilationUnit :: Parser Token ASTNode
 compilationUnit = 
-    pure ACompUnit            <*>
-    (optional packageDecl     <*>
-     many importDeclaration   <*>
-     many typeDeclaration)
+    pure ACompUnit           <*>
+    optional packageDecl     <*>
+    many importDeclaration   <*>
+    many typeDeclaration
     
 
 
@@ -206,12 +206,14 @@ typeArgument =
     q              <|>
     bounded
   where
-    q = op QuestionMark
+    q = op QuestionMark *> pure AWildcard
     bounded = 
-        pure ATypeArg                   <*>
-        (q                               *> 
-         (key Kextends <|> key Ksuper)  <*>
-         referenceType)
+        pure ATypeArg       <*>
+        (q                   *> 
+         extendsOrSuper)    <*>
+         referenceType
+    extendsOrSuper = 
+        fmap (tail . show) (key Kextends <|> key Ksuper)
 
 
 typeArguments :: Parser Token [ASTNode]
@@ -236,9 +238,9 @@ jtype :: Parser Token ASTNode
 jtype =
     pure AType                     <*>
     (basicType <|> referenceType)  <*>
-    array
+    opt False (array *> pure True)
   where
-    array = optional (key OpenSquare *> key CloseSquare)
+    array = sep OpenSquare *> sep CloseSquare
 
 
 -- Section 4: generics
@@ -264,12 +266,11 @@ typeParameters =
     op GreaterThan
 
 
-nonWildcardTypeArguments :: Parser Token ASTNode
+nonWildcardTypeArguments :: Parser Token [ASTNode]
 nonWildcardTypeArguments = 
-    pure ANWTArgs  <*>
-    (op LessThan    *> 
-     typeList      <* 
-     op GreaterThan)
+    op LessThan      *> 
+    typeList        <* 
+    op GreaterThan
 
 
 typeList :: Parser Token [ASTNode]
@@ -283,13 +284,13 @@ diamond =
     op GreaterThan
 
 
-typeArgumentsOrDiamond :: Parser Token ASTNode
+typeArgumentsOrDiamond :: Parser Token [ASTNode]
 typeArgumentsOrDiamond = 
     (diamond *> pure [])       <|> 
     typeArguments
 
 
-nonWildcardTypeArgumentsOrDiamond :: Parser Token ASTNode
+nonWildcardTypeArgumentsOrDiamond :: Parser Token [ASTNode]
 nonWildcardTypeArgumentsOrDiamond = 
     (diamond *> pure [])       <|> 
     nonWildcardTypeArguments
@@ -345,32 +346,33 @@ elementValuePairs :: Parser Token [ASTNode]
 elementValuePairs = sepBy1Fst elementValuePair (sep Comma)
 
 
-annotationElement :: Parser Token ASTNode
+annotationElement :: Parser Token [ASTNode]
 annotationElement = 
-    elementValuePairs   <|> 
-    elementValue
+    elementValuePairs         <|> 
+    fmap (:[]) elementValue
 
 
-annotation :: Parser Token [Token]
+annotation :: Parser Token ASTNode
 annotation = 
-    pure AAnno      <*>
-    (literal AtSign *> 
-     qualifiedIdentifier <*> 
-     fmap join rest)
+    pure AAnno             <*>
+    (literal AtSign         *> 
+     qualifiedIdentifier)  <*> 
+     rest
   where
-    rest = optional (sep OpenParen                *> 
-                     optional annotationElement  <* 
-                     sep CloseParen)
+    rest = opt [] (sep OpenParen               *> 
+                   opt [] annotationElement   <* 
+                   sep CloseParen)
 
 
-annotations :: Parser Token [Token]
-annotations = fmap concat $ some annotation
+annotations :: Parser Token [ASTNode]
+annotations = some annotation
 
 
 modifier :: Parser Token ASTNode
 modifier = annotation <|> others
   where
-    others = mconcat $ map key [Kpublic, Kprotected, Kprivate, Kstatic, Kabstract, Kfinal, Knative, Ksynchronized, Ktransient, Kvolatile, Kstrictfp]
+    others = mconcat $ map q [Kpublic, Kprotected, Kprivate, Kstatic, Kabstract, Kfinal, Knative, Ksynchronized, Ktransient, Kvolatile, Kstrictfp]
+    q k = key k *> pure (AModifier (tail $ show k))
 
 
 {-
