@@ -229,7 +229,42 @@ data ASTNode =
     
     -- for loop
     --   ???
-
+    
+    -- break statement
+    --   optional identifier
+    | ABreak (Maybe ASTNode)
+    
+    -- continue statement
+    --   optional identifier
+    | AContinue (Maybe ASTNode)
+    
+    -- return statement
+    --   optional expression
+    | AReturn (Maybe ASTNode)
+    
+    -- throw statement
+    --   expression
+    | AThrow ASTNode
+    
+    -- synchronized thing
+    --   expression, block
+    | ASynch ASTNode ASTNode
+    
+    -- catch clause
+    --   variable modifiers, type, identifier, block
+    | ACatch [ASTNode] ASTNode ASTNode ASTNode
+    
+    -- try block
+    --   block, catch clauses, optional finally
+    | ATry ASTNode [ASTNode] (Maybe ASTNode)
+    
+    -- resource
+    --   variable modifiers, reference type, identifier, # array levels, expression
+    | AResource [ASTNode] ASTNode ASTNode Int ASTNode
+    
+    -- try with resources
+    --   resources, block, catch clauses, optional finally
+    | ATryResource [ASTNode] ASTNode [ASTNode] (Maybe ASTNode)
 
 
   deriving (Show, Eq, Ord)

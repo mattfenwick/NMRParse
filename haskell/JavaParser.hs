@@ -726,8 +726,8 @@ switchStatement =
         (case' <|> def)   <*
         op Colon
     case' =
-        key Kcase                            >>
-        (identifier <|> constantExpression)  >>= \e ->
+        key Kcase                    >>
+        (identifier <|> expression)  >>= \e ->
         pure (Just e)
     def =
         key Kdefault >>
@@ -753,12 +753,96 @@ doLoop =
     pure (ADoLoop s e)
 
 
-{-
- :: Parser Token ASTNode
- :: Parser Token ASTNode
- :: Parser Token ASTNode
- :: Parser Token ASTNode
--}
+breakStatement :: Parser Token ASTNode
+breakStatement =
+    key Kbreak            >>
+    optional identifier   >>= \i ->
+    sep Semicolon         >>
+    pure (ABreak i)
+
+
+continueStatement :: Parser Token ASTNode
+continueStatement =
+    key Kcontinue        >>
+    optional identifier  >>= \i ->
+    sep Semicolon        >>
+    pure (AContinue i)
+
+
+returnStatement :: Parser Token ASTNode
+returnStatement =
+    key Kreturn          >>
+    optional expression  >>= \e ->
+    sep Semicolon        >>
+    pure (AReturn e)
+
+
+throwStatement :: Parser Token ASTNode
+throwStatement =
+    key Kthrow       >>
+    expression       >>= \e ->
+    sep Semicolon    >>
+    pure (AThrow e)
+
+
+synchStatement :: Parser Token ASTNode
+synchStatement = 
+    key Ksynchronized   >>
+    parenExpression     >>= \e ->
+    block               >>= \b ->
+    pure (ASynch e b)
+
+
+tryStatement :: Parser Token ASTNode
+tryStatement =
+    key Ktry            >>
+    block               >>= \b ->
+    many catchClause    >>= \cs ->
+    optional finally    >>= \f ->
+    pure (ATry b cs f)
+
+
+catchClause :: Parser Token ASTNode
+catchClause =
+    key Kcatch               >>
+    sep OpenParen            >>
+    many variableModifier    >>= \ms ->
+    identifier               >>= \t ->
+    identifier               >>= \i ->
+    sep CloseParen           >>
+    block                    >>= \b ->
+    pure (ACatch ms t i b)
+
+
+finally :: Parser Token ASTNode
+finally = 
+    key Kfinally   *>
+    block
+
+
+resource :: Parser Token ASTNode
+resource =
+    many variableModifier       >>= \ms ->
+    referenceType               >>= \t ->
+    identifier                  >>= \i ->
+    (fmap length $ many array)  >>= \n ->
+    op Equals                   >>
+    expression                  >>= \e ->
+    pure (AResource ms t i n e)
+
+
+tryResourceStatement :: Parser Token ASTNode
+tryResourceStatement =
+    key Ktry                             >>
+    sep OpenParen                        >>
+    sepBy1Fst resource (sep Semicolon)   >>= \rs ->
+    sep CloseParen                       >>
+    block                                >>= \b ->
+    many catchClause                     >>= \cs ->
+    optional finally                     >>= \f ->
+    pure (ATryResource rs b cs f)
+    
+
 
 statement :: Parser Token ASTNode
 statement = 
@@ -772,6 +856,7 @@ statement =
     whileLoop            <|>
     doLoop               <|>
     forLoop              <|>
+    forEachLoop          <|>
     breakStatement       <|>
     continueStatement    <|>
     returnStatement      <|>
@@ -783,11 +868,3 @@ statement =
 
 
 forLoop              = error "TODO"
-breakStatement       = error "TODO"
-continueStatement    = error "TODO"
-returnStatement      = error "TODO"
-throwStatement       = error "TODO"
-synchStatement       = error "TODO"
-tryStatement         = error "TODO"
-tryResourceStatement = error "TODO"
-constantExpression   = error "TODO"

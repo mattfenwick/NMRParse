@@ -15,9 +15,11 @@ module JavaTokens (
 ) where
 
 
--- whoa prefixes !!! 'double' needs to go before 'do', 
---   'throws' before 'throw', 'finally' before 'final',
---   'interface' before 'int'
+-- watch out for prefixes -- longest first:
+--   'double'     /   'do' 
+--   'throws'     /   'throw'
+--   'finally'    /   'final'
+--   'interface'  /   'int'
 data Keyword
   = Kdouble
   | Kthrows
