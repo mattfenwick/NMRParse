@@ -320,15 +320,18 @@ elementValues = sepBy1Fst elementValue (sep Comma)
 -}
 elementValueArrayInitializer :: Parser Token ASTNode
 elementValueArrayInitializer = 
-    pure AArrayInit          <*>
-    (sep OpenCurly            *> 
-     opt [] elementValues    <* 
-     optional (sep Comma)    <* 
-     sep CloseCurly)
+    sep OpenCurly            >> 
+    opt [] elementValues     >>= \evs -> 
+    optional (sep Comma)     >>
+    sep CloseCurly           >>
+    pure (AEVAInit evs)
 
 
 elementValue :: Parser Token ASTNode
-elementValue = annotation <|> expression1 <|> elementValueArrayInitializer
+elementValue = 
+    annotation                     <|> 
+    expression1                    <|> 
+    elementValueArrayInitializer
 
 
 expression1 = error "TODO"
@@ -336,14 +339,15 @@ expression1 = error "TODO"
 
 elementValuePair :: Parser Token ASTNode
 elementValuePair = 
-    pure APair      <*>
-    identifier      <*> 
-    (op Equals       *> 
-     elementValue)
+    identifier         >>= \i -> 
+    op Equals          >>
+    elementValue       >>= \ev ->
+    pure (APair i ev)
 
 
 elementValuePairs :: Parser Token [ASTNode]
-elementValuePairs = sepBy1Fst elementValuePair (sep Comma)
+elementValuePairs = 
+    sepBy1Fst elementValuePair (sep Comma)
 
 
 annotationElement :: Parser Token [ASTNode]
@@ -468,18 +472,12 @@ classBodyDeclaration =
 
 classBody :: Parser Token ASTNode
 classBody = 
-    sep OpenCurly        >> 
-    many decl            >>= \ds -> 
-    sep CloseCurly       >>
+    sep OpenCurly         >> 
+    many decl             >>= \ds -> 
+    sep CloseCurly        >>
     pure (AClassBody ds)
   where
     decl = classBodyDeclaration <|> emptyThing
-
-
-
-block = error "TODO"
-
-variableInitializer = error "TODO"
 
 
 
@@ -547,9 +545,9 @@ interfaceBodyDeclaration =
 
 interfaceBody :: Parser Token ASTNode
 interfaceBody =
-    sep OpenCurly       >>
-    many decl           >>= \ds ->
-    sep CloseCurly      >>
+    sep OpenCurly        >>
+    many decl            >>= \ds ->
+    sep CloseCurly       >>
     pure (AIntfBody ds)
   where
     decl = interfaceBodyDeclaration <|> emptyThing
@@ -595,40 +593,201 @@ formalParameters =
     params = sepBy0 formalParamDecl (sep Comma)
 
 
+variableInitializer :: Parser Token ASTNode
+variableInitializer =
+    arrayInitializer    <|>
+    expression
 
--- Section ??
+
+arrayInitializer :: Parser Token ASTNode
+arrayInitializer =
+    sep OpenCurly         >>
+    varInits              >>= \(vs,_) ->
+    optional (sep Comma)  >>
+    pure (AArrayInit vs)
+  where
+    varInits = sepBy0 variableInitializer (sep Comma)
+
+
+expression = error "TODO"
+
+
+-- Section 9: blocks
+
+block :: Parser Token ASTNode
+block =
+    sep OpenCurly        >>
+    many blockStatement  >>= \bs ->
+    sep CloseCurly       >>
+    pure (ABlock bs)
+
+
+blockStatement :: Parser Token ASTNode
+blockStatement =
+    localVarDeclStmnt   <|>
+    classDeclaration    <|>
+    statement
+
+
+localVarDeclStmnt :: Parser Token ASTNode
+localVarDeclStmnt = 
+    pure ALVDStmnt         <*>
+    many variableModifier  <*> 
+    jtype                  <*>
+    vars                   <*
+    sep Semicolon
+  where
+    vars = sepBy1Fst variableDeclaration (sep Comma)
+
+
+labeledStatement :: Parser Token ASTNode
+labeledStatement =
+    identifier   >>= \i ->
+    op Colon   >>
+    statement   >>= \s ->
+    pure (ALabel i s)
+
+
+statementExpression :: Parser Token ASTNode
+statementExpression =
+    expression     <*
+    sep Semicolon
+
+
+parenExpression :: Parser Token ASTNode
+parenExpression = 
+    sep OpenParen   >>
+    expression      >>= \e ->
+    sep CloseParen  >>
+    pure e
+
+
+ifStatement :: Parser Token ASTNode
+ifStatement =
+    key Kif              >>
+    parenExpression      >>= \c ->
+    statement            >>= \s ->
+    optional elseClause  >>= \e ->
+    pure (AIf c s e)
+  where
+    elseClause = 
+        key Kelse  *>
+        statement
+
+
+assertStatement :: Parser Token ASTNode
+assertStatement =
+    key Kassert           >>
+    expression            >>= \e1 ->
+    optional other        >>= \e2 ->
+    sep Semicolon         >>
+    pure (AAssert e1 e2)
+  where
+    other = 
+        op Colon    *>
+        expression
+
+
+-- based on this grammar,
+--   which I believe is 100% equivalent:
+--  
+-- SwitchStatement:
+--     switch ( Expression ) SwitchBlock
+-- 
+-- SwitchBlock:
+--     { 
+--     many0 SwitchBlockStatementGroup
+--     }
+-- 
+-- SwitchBlockStatementGroup:
+--     many1 SwitchLabel 
+--     many0 BlockStatement
+-- 
+-- SwitchLabel:
+--     case ConstantExpression :
+--     case Identifier :
+--     default :
+-- 
+switchStatement :: Parser Token ASTNode
+switchStatement =
+    key Kswitch           >>
+    parenExpression       >>= \e ->
+    sep OpenCurly         >>
+    many sbsg             >>= \sgs ->
+    sep CloseCurly        >>
+    pure (ASwitch e sgs)
+  where
+    sbsg = 
+        pure ASwitchSGs      <*>
+        some switchLabel     <*>
+        many blockStatement
+    switchLabel =
+        pure ACase        <*>
+        (case' <|> def)   <*
+        op Colon
+    case' =
+        key Kcase                            >>
+        (identifier <|> constantExpression)  >>= \e ->
+        pure (Just e)
+    def =
+        key Kdefault >>
+        pure Nothing
+    
+
+
+whileLoop :: Parser Token ASTNode
+whileLoop =
+    key Kwhile         >>
+    parenExpression    >>= \e ->
+    statement          >>= \s ->
+    pure (AWhile e s)
+
+
+doLoop :: Parser Token ASTNode
+doLoop =
+    key Kdo             >>
+    statement           >>= \s ->
+    key Kwhile          >>
+    expression          >>= \e ->
+    sep Semicolon       >>
+    pure (ADoLoop s e)
+
 
 {-
-classOrInterfaceType :: ???
-classOrInterfaceType = pseq3 f identifier (optional TypeArguments <what value??>) classOrInterfaceTypeRest
-  where f = ???
-
-
-arrayType :: Parser Token Token
-arrayType = ignoreRight ptype $ pseq (literal $ Separator OpenSquare) (literal $ Separator CloseSquare)
-
-
-referenceType :: Parser Token Token
-referenceType = alt classOrInterfaceType arrayType
-
-
-primitiveType :: Parser Token Token
-primitiveType = pany $ map (literal . Keyword) [Kbyte, Kshort, Kint, Klong, Kchar, Kfloat, Kdouble, Kboolean]
-
-
-ptype :: Parser Token Token
-ptype = alt primitiveType referenceType
-
-
-
-
-{-
-
-
--- constantExpression ?
-
-leftHandSide :: Parser Token [Token]
-leftHandSide = pany [expressionName, fieldAccess, arrayAccess]
-
+ :: Parser Token ASTNode
+ :: Parser Token ASTNode
+ :: Parser Token ASTNode
+ :: Parser Token ASTNode
 -}
--}
+
+statement :: Parser Token ASTNode
+statement = 
+    block                <|>
+    emptyThing           <|>
+    labeledStatement     <|>
+    statementExpression  <|>
+    ifStatement          <|>
+    assertStatement      <|>
+    switchStatement      <|>
+    whileLoop            <|>
+    doLoop               <|>
+    forLoop              <|>
+    breakStatement       <|>
+    continueStatement    <|>
+    returnStatement      <|>
+    throwStatement       <|>
+    synchStatement       <|>
+    tryStatement         <|>
+    tryResourceStatement
+
+
+
+forLoop              = error "TODO"
+breakStatement       = error "TODO"
+continueStatement    = error "TODO"
+returnStatement      = error "TODO"
+throwStatement       = error "TODO"
+synchStatement       = error "TODO"
+tryStatement         = error "TODO"
+tryResourceStatement = error "TODO"
+constantExpression   = error "TODO"

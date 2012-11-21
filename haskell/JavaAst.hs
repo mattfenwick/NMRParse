@@ -97,7 +97,7 @@ data ASTNode =
 
     -- element value array initializer
     --   element values
-    | AArrayInit [ASTNode]
+    | AEVAInit [ASTNode]
     
     -- element value pair
     --   identifier, element value
@@ -178,15 +178,57 @@ data ASTNode =
     -- formal parameters
     --   normal parameters, optional var-args parameter
     | AFParams [ASTNode] (Maybe ASTNode)
+    
+    -- array initializer
+    --   element values
+    | AArrayInit [ASTNode]
 
 
 
--- ---- Section ??
+-- ---- Section 9
 
     -- block
     --   block statements
     | ABlock [ASTNode]
-
+    
+    -- local variable declaration statement
+    --   variable modifiers, type, variable declarations
+    | ALVDStmnt [ASTNode] ASTNode [ASTNode]
+    
+    -- label
+    --   label name, statement
+    | ALabel ASTNode ASTNode
+    
+    -- switch block statement group
+    --   switch labels (should be at least 1), block statements
+    | ASwitchSGs [ASTNode] [ASTNode]
+    
+    -- case label
+    --   the expression (Nothing means 'default')
+    | ACase (Maybe ASTNode)
+    
+    -- switch statement
+    --   switch value, statement groups
+    | ASwitch ASTNode [ASTNode]
+    
+    -- if statement
+    --   expression, statement, optional else-statement
+    | AIf ASTNode ASTNode (Maybe ASTNode)
+    
+    -- assert statement
+    --   boolean expression, optional message expression
+    | AAssert ASTNode (Maybe ASTNode)
+    
+    -- while loop
+    --   boolean expression, body
+    | AWhile ASTNode ASTNode
+    
+    -- do loop
+    --   body, boolean expression
+    | ADoLoop ASTNode ASTNode
+    
+    -- for loop
+    --   ???
 
 
 
