@@ -125,7 +125,7 @@ data ASTNode =
     
     -- method declaration
     --   type parameters, void or type, identifier, parameters, throws, block
-    | AMethodDecl [ASTNode] (Maybe ASTNode) ASTNode [ASTNode] [ASTNode] ASTNode
+    | AMethodDecl [ASTNode] (Maybe ASTNode) ASTNode ASTNode [ASTNode] ASTNode
     
     -- field declaration
     --   type, identifiers + optional assignments
@@ -137,7 +137,7 @@ data ASTNode =
     
     -- constructor declaration
     --   type parameters, identifier, parameters, throws, required block
-    | AConsDecl [ASTNode] ASTNode [ASTNode] [ASTNode] ASTNode
+    | AConsDecl [ASTNode] ASTNode ASTNode [ASTNode] ASTNode
     
     -- class body block
     --   is static, block
@@ -157,7 +157,7 @@ data ASTNode =
     
     -- intf. method declaration
     --   type parameters, void or type, identifier, parameters, throws
-    | AIMethodDecl [ASTNode] (Maybe ASTNode) ASTNode [ASTNode] [ASTNode]
+    | AIMethodDecl [ASTNode] (Maybe ASTNode) ASTNode ASTNode [ASTNode]
     
     -- intf. field declaration
     --   type, identifiers + assignments

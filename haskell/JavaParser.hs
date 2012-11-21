@@ -568,10 +568,10 @@ variableModifier =
 
 formalParamDecl :: Parser Token ASTNode
 formalParamDecl =
-    many variableModifier       >>= \mds ->
-    jtype                       >>= \(AType t n) ->
-    identifier                  >>= \i ->
-    (fmap length $ many array)  >>= \n' ->
+    many variableModifier           >>= \mds ->
+    jtype                           >>= \(AType t n) ->
+    identifier                      >>= \i ->
+    (fmap length $ many array)      >>= \n' ->
     pure (AFParam mds (AType t (n + n')) i)
 
 
@@ -586,13 +586,13 @@ varArg =
 
 formalParameters :: Parser Token ASTNode
 formalParameters =
-    sep OpenParen    >>
-    params           >>= \ps ->
-    optional varArg  >>= \va ->
-    sep CloseParen   >>
+    sep OpenParen          >>
+    params                 >>= \(ps,_) ->
+    optional varArg        >>= \va ->
+    sep CloseParen         >>
     pure (AFParams ps va)
   where
-    params = fmap fst $ sepBy0 formalParamDecl (sep Comma)
+    params = sepBy0 formalParamDecl (sep Comma)
 
 
 
