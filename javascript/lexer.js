@@ -1,4 +1,4 @@
-var Star = (function(PC, $) {
+var Lexer = (function(PC) {
     "use strict";
 
     function safeMap(f, xs) {
@@ -27,12 +27,12 @@ var Star = (function(PC, $) {
 	//  DataOpen  :=  "data_"  (not Space)(+)
 	//  SaveOpen  :=  "save_"  (not Space)(+)
     
-    var stop = PC.string("stop_"),
-        saveClose = PC.string("save_"),
-        loop = PC.string("loop_"),
-        comment = PC.literal('#').seq2R(newline.not1().many0()),
-        dataOpen = PC.string("data_").seq2R(space.not1().many1()),
-        saveOpen = saveClose.seq2R(space.not1().many1());
+    var stop = PC.string("stop_").fmap(function(x) {return Token('stop');}),
+        saveClose = PC.string("save_").fmap(function(x) {return Token('saveclose');}),
+        loop = PC.string("loop_").fmap(function(x) {return Token('loop');}),
+        comment = PC.literal('#').seq2R(newline.not1().many0()).fmap(function(cs) {return Token('comment', cs);}), // TODO do we need to join the cs?
+        dataOpen = PC.string("data_").seq2R(space.not1().many1()).fmap(function(x) {return Token('dataopen');}),
+        saveOpen = saveClose.seq2R(space.not1().many1()).fmap(function(x) {return Token('saveopen');});
 	
 	//  Identifier :=  '_'  (not Space)(+)
     var identifier = PC.literal('_').seq2R(space.not1().many1());
@@ -61,21 +61,40 @@ var Star = (function(PC, $) {
     var whitespace = blank.many1(),
         newlines = newline.many1();
 	
-	//  Token   :=  DataOpen  |  SaveOpen  |  SaveClose  |  Loop  |  Stop  |  Value  
-	//           |  Whitespace  |  Newlines  |  Comment  |  Identifier
-	var token = PC.any([dataOpen, saveOpen, saveClose, loop, stop, value, whitespace, newlines, comment, identifier]);
+	//  OneToken   :=  DataOpen  |  SaveOpen  |  SaveClose  |  Loop  |  Stop  |  Value  
+	//              |  Whitespace  |  Newlines  |  Comment  |  Identifier
+	var oneToken = PC.any([dataOpen, saveOpen, saveClose, loop, stop, value, whitespace, newlines, comment, identifier]);
     
-	//  Scanner  :=  Token(*)
-    var scanner = token.many0();
+	//  Scanner  :=  OneToken(*)
+    var scanner = oneToken.many0();
     
-    function loadFile(i, f, g) {
-        $.get('http://rest.bmrb.wisc.edu/bmrb/NMR-STAR3/' + i, // just assume i is an integer 
-              f); // awesome, can't use $.ajax
-    }
+    var TOKEN_TYPES = {
+        'dataopen': 1,
+        'saveopen': 1,
+        'saveclose': 1,
+        'loop': 1,
+        'stop': 1,
+        'value': 1,
+        'whitespace': 1, // CONFUSING -- actually means 'space or tab, but not newline'
+        'newline': 1,
+        'comment': 1,
+        'identifier': 1
+    };
 	
+    function Token(type, value) {
+        if(!(type in TOKEN_TYPES)) {
+            throw new Error("invalid token type: " + type);
+        }
+        return {
+            type: 'token',
+            tokentype: type,
+            value: value
+        };
+    }
+    
     return {
         scanner:  scanner,
-        token:  token,
+        oneToken:  oneToken,
         dataOpen: dataOpen,
         saveOpen: saveOpen,
         saveClose: saveClose,
@@ -90,7 +109,7 @@ var Star = (function(PC, $) {
         blank: blank,
         space: space,
         special: special,
-        loadFile: loadFile
+        Token: Token
     };
     
-})(ParserCombs, $);
+})(ParserCombs);
